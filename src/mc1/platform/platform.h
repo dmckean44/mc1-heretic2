@@ -34,3 +34,7 @@ typedef struct
 extern int VIDMC1_SetMode(int width, int height, vid_frame_t* frame);
 extern void VIDMC1_SetPalette(const uint8_t* rgb);
 extern void VIDMC1_EndFrame(vid_frame_t* frame);
+
+// Fast video memory for the Z buffer, or NULL when there is none to spare.
+extern void* VIDMC1_AllocFast(int size);
+extern void VIDMC1_FreeFast(void* ptr);

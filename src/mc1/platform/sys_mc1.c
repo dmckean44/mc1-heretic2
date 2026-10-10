@@ -79,10 +79,17 @@ void Sys_UnloadGameDll(const char* name, HINSTANCE* hinst)
 	*hinst = NULL;
 }
 
+// With fixedtime set, the clock advances by exactly that much per frame so runs repeat exactly.
+static qboolean virtual_clock;
+static long long virtual_us = 1001;
+
 long long Sys_Microseconds(void)
 {
 	static struct timeval start;
 	struct timeval now;
+
+	if (virtual_clock)
+		return virtual_us;
 
 	gettimeofday(&now, NULL);
 	if (start.tv_sec == 0 && start.tv_usec == 0)
@@ -207,6 +214,58 @@ size_t _getstacksize(void)
 }
 #endif
 
+/*
+ * Feeds console commands from the file named by the in_script cvar at given frames, one
+ * "frame command" pair per line, for repeatable walkthroughs and benchmarks.
+ */
+static void RunInputScript(const int frame)
+{
+	static FILE* script;
+	static qboolean opened;
+	static int next_frame = -1;
+	static char next_command[256];
+
+	if (!opened)
+	{
+		const char* name = Cvar_VariableString("in_script");
+
+		if (name[0] == 0)
+			return;
+
+		opened = true;
+		script = fopen(name, "r");
+		if (script == NULL)
+			Com_Printf("Couldn't open input script %s\n", name);
+	}
+
+	while (script != NULL)
+	{
+		if (next_frame < 0)
+		{
+			char line[300];
+
+			if (fgets(line, sizeof(line), script) == NULL)
+			{
+				fclose(script);
+				script = NULL;
+				return;
+			}
+
+			if (line[0] == '#' || sscanf(line, "%d %255[^\n]", &next_frame, next_command) != 2)
+			{
+				next_frame = -1;
+				continue;
+			}
+		}
+
+		if (next_frame > frame)
+			return;
+
+		Cbuf_AddText(va("%s\n", next_command));
+		next_frame = -1;
+	}
+}
+
 int main(int argc, char** argv)
 {
 #if defined(MC1) && !defined(MR32SIM)
@@ -217,12 +276,25 @@ int main(int argc, char** argv)
 
 	long long oldtime = Sys_Microseconds();
 
-	while (true)
+	for (int frame = 0;; frame++)
 	{
+		const int fixedtime = (int)Cvar_VariableValue("fixedtime");
 		long long newtime;
-		do
-			newtime = Sys_Microseconds();
-		while (newtime == oldtime);
+
+		RunInputScript(frame);
+
+		virtual_clock = (fixedtime > 0);
+		if (virtual_clock)
+		{
+			virtual_us = oldtime + fixedtime;
+			newtime = virtual_us;
+		}
+		else
+		{
+			do
+				newtime = Sys_Microseconds();
+			while (newtime == oldtime);
+		}
 
 		curtime = (int)(newtime / 1000);
 

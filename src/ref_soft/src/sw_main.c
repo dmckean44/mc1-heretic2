@@ -425,11 +425,18 @@ RE_Init(void)
 RE_Shutdown
 ===============
 */
+static qboolean zbuffer_in_vram;
+
 static void
 R_FreeZBuffer(void)
 {
-	free(d_pzbuffer);
+	if (zbuffer_in_vram)
+		VIDMC1_FreeFast(d_pzbuffer);
+	else
+		free(d_pzbuffer);
+
 	d_pzbuffer = NULL;
+	zbuffer_in_vram = false;
 }
 
 static void
@@ -1363,7 +1370,12 @@ R_InitGraphics( int width, int height )
 		sc_base = NULL;
 	}
 
-	d_pzbuffer = Q_malloc(width * height * sizeof(zbufvalue_t));
+	d_pzbuffer = VIDMC1_AllocFast(width * height * sizeof(zbufvalue_t));
+	zbuffer_in_vram = (d_pzbuffer != NULL);
+	if (!d_pzbuffer)
+		d_pzbuffer = Q_malloc(width * height * sizeof(zbufvalue_t));
+
+	R_Printf(PRINT_ALL, "Z buffer in VRAM: %s\n", zbuffer_in_vram ? "yes" : "no");
 
 	R_InitCaches();
 
