@@ -8,7 +8,7 @@
 #include "g_AI.h" //mxd
 #include "g_AI_local.h" //mxd
 #include "g_Utilities.h"
-#include "m_move.h" //mxd
+#include "m_Move.h" //mxd
 #include "NavSys/mg_AI.h" //mxd
 #include "NavSys/mg_Guide.h"
 #include "Ogle/m_Ogle.h" //mxd

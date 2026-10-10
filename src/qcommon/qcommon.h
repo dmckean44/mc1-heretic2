@@ -31,6 +31,13 @@
 	#else
 		#define CPUSTRING	"x86"
 	#endif
+#else
+	#define BUILDSTRING "RELEASE"
+	#ifdef MC1
+		#define CPUSTRING	"mrisc32"
+	#else
+		#define CPUSTRING	"x86"
+	#endif
 #endif
 
 typedef struct sizebuf_s

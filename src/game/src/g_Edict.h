@@ -70,7 +70,7 @@ struct edict_s
 
 	MsgQueue_t msgQ;
 	G_MessageHandler_t msgHandler;
-	enum ClassID_e classID; //mxd. int in original version.
+	int classID; // enum ClassID_e, which g_ClassStatics.h can't define before this point.
 
 	void (*think)(edict_t* self);
 	void (*ai)(edict_t* self);
