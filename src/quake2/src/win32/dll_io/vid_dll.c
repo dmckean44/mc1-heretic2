@@ -10,7 +10,11 @@
 #include "client/glimp_sdl3.h" // YQ2
 #include "win32/vid_Screenshot.h" //mxd
 
-#define FALLBACK_REFLIB	"gl1" //mxd. //TODO: change to "soft" if we ever have a software renderer.
+#ifdef _WIN32
+	#define FALLBACK_REFLIB	"gl1" //mxd. //TODO: change to "soft" if we ever have a software renderer.
+#else
+	#define FALLBACK_REFLIB	"soft"
+#endif
 
 // Structure containing functions exported from refresh DLL.
 refexport_t re;
@@ -361,7 +365,7 @@ void VID_Init(void)
 	vid_restart_required = true; // H2
 
 	// Create the video variables so we know how to start the graphics drivers.
-	vid_ref = Cvar_Get("vid_ref", "gl1", CVAR_ARCHIVE); // H2: "soft"; H2_1.07: "gl".
+	vid_ref = Cvar_Get("vid_ref", FALLBACK_REFLIB, CVAR_ARCHIVE); // H2: "soft"; H2_1.07: "gl".
 	vid_gamma = Cvar_Get("vid_gamma", "0.5", CVAR_ARCHIVE);
 	vid_brightness = Cvar_Get("vid_brightness", "0.5", CVAR_ARCHIVE); // H2
 	vid_contrast = Cvar_Get("vid_contrast", "0.5", CVAR_ARCHIVE); // H2
