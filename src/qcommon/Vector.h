@@ -94,6 +94,11 @@ H2COMMON_API extern qboolean Vec3EqualsEpsilon(const vec3_t v1, const vec3_t v2)
 H2COMMON_API extern qboolean Vec3IsZero(const vec3_t vec);
 H2COMMON_API extern qboolean Vec3NotZero(const vec3_t vec);
 
+#ifdef H2COMMON_INLINE_VECTORS
+#include "VectorInline.h"
+#endif
+
+
 #ifdef __cplusplus
 }
 #endif

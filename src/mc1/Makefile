@@ -40,7 +40,7 @@ else
   endif
 endif
 
-CFLAGS := -std=gnu17 $(ARCHFLAGS) -fvisibility=hidden -DNDEBUG -include $(SRC)/mc1/h2compat.h \
+CFLAGS := -std=gnu17 $(ARCHFLAGS) -fvisibility=hidden -DNDEBUG -DH2COMMON_INLINE_VECTORS -include $(SRC)/mc1/h2compat.h \
 	-I$(SRC)/mc1/include -Wno-unknown-pragmas -Wno-pragma-once-outside-header -Wno-attributes \
 	-Wno-unused-value -Wno-microsoft-anon-tag -Wno-incompatible-pointer-types-discards-qualifiers \
 	-Wno-incompatible-function-pointer-types -Wno-incompatible-pointer-types -Wno-int-conversion \
@@ -97,6 +97,9 @@ $(B)/$(1)/%.cpp.o: $(SRC)/%.cpp
 endef
 
 $(foreach m,H2COMMON PLAYER CLFX GAME ENGINE,$(eval $(call compile_rules,$(m))))
+
+# The out-of-line definitions of the vector functions that everything else inlines.
+$(B)/H2COMMON/H2Common/src/Vector.c.o: CFLAGS += -UH2COMMON_INLINE_VECTORS
 
 # Partial link, then hide everything that the module didn't export. The MRISC32 partial link names
 # the constructor tables .ctor/.dtor, which the final link wouldn't pick up, so they're renamed back.

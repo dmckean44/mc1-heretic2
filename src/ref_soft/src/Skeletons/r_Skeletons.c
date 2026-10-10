@@ -105,8 +105,20 @@ static void RotateModelSegment(const M_SkeletalJoint_t* joint, vec3_t* modelVert
 	Matrix3MultByMatrix3(rotation, toWorld, rotation2);
 	Matrix3MultByMatrix3(partialBackToLocal, rotation2, rotation);
 
+	// RotatePointAboutLocalOrigin() on each vertex, with the same float operations.
+	const float* origin = joint->model.origin;
+
 	for (int i = 0; i < modelCluster->numVerticies; i++)
-		RotatePointAboutLocalOrigin(rotation, joint->model.origin, modelVerticies[modelCluster->verticies[i]]);
+	{
+		float* p = modelVerticies[modelCluster->verticies[i]];
+		const float x = p[0] - origin[0];
+		const float y = p[1] - origin[1];
+		const float z = p[2] - origin[2];
+
+		p[0] = rotation[0][0] * x + rotation[1][0] * y + rotation[2][0] * z + origin[0];
+		p[1] = rotation[0][1] * x + rotation[1][1] * y + rotation[2][1] * z + origin[1];
+		p[2] = rotation[0][2] * x + rotation[1][2] * y + rotation[2][2] * z + origin[2];
+	}
 }
 
 void RotateModelSegments(ModelSkeleton_t* skel, const int jointIndex, const int modelClusterIndex, const int anglesIndex, vec3_t* modelVerticies)
