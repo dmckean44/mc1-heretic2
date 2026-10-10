@@ -101,7 +101,10 @@ static inline errno_t memcpy_s(void* dst, size_t size, const void* src, size_t c
 static inline errno_t fopen_s(FILE** f, const char* name, const char* mode)
 {
 	*f = fopen(name, mode);
-	return (*f != NULL ? 0 : errno);
+	if (*f != NULL)
+		return 0;
+
+	return (errno != 0 ? errno : ENOENT);
 }
 
 static inline size_t fread_s(void* buf, size_t size, size_t elsize, size_t count, FILE* f)

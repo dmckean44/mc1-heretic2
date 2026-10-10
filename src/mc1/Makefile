@@ -27,10 +27,14 @@ else
   LDR := mrisc32-elf-ld -r -d
   OBJCOPY := mrisc32-elf-objcopy
   NM := mrisc32-elf-nm
-  ARCHFLAGS := -O2 -g -fno-strict-aliasing -ffast-math -DMC1
+  MC1_SDK ?= $(HOME)/mc1-sdk
+  ARCHFLAGS := -O2 -g -fno-strict-aliasing -fwrapv -fsigned-char -fsingle-precision-constant -DMC1 \
+	-I$(MC1_SDK)/include
+  LDSCRIPT := $(B)/app-xram-cxx.ld
+  LDFLAGS := -L$(MC1_SDK)/lib -T$(LDSCRIPT) -Wl,--defsym=__stack_size=8388608
   ifeq ($(TARGET),sim)
-    ARCHFLAGS += -DMR32SIM
-    LDLIBS := -msim -lm
+    ARCHFLAGS += -msim -DMR32SIM
+    LDLIBS := -lmc1 -msim -lm
   else
     LDLIBS := -lmc1 -mno-crt0 -lmc1crt0-app -lm
   endif
@@ -64,6 +68,9 @@ ENGINE_SRC := $(filter-out $(ENGINE_PLATFORM),$(call find,quake2/src)) \
 	qcommon/anorms.c qcommon/netmsg_read.c qcommon/netmsg_write.c qcommon/p_dll.c qcommon/Reference.c \
 	qcommon/Skeletons.c qcommon/turbsin.c \
 	$(call find,mc1/platform) $(call find,ref_soft)
+ifneq ($(TARGET),native)
+  ENGINE_SRC += ref_soft/src/sw_surf_mr32.s
+endif
 ENGINE_FLAGS := -DQUAKE2_DLL -I$(SRC)/quake2/src -I$(SRC)/../include -I$(SRC)/quake2/src/client \
 	-I$(SRC)/quake2/src/server -I$(SRC)/qcommon -I$(SRC)/game/src -I$(SRC)/Player/src -I$(SRC)/ref_soft/src -I$(SRC)/ref_soft/src/header -I$(SRC)/ref_soft/src/Skeletons \
 	-I$(SRC)/mc1/platform \
@@ -78,6 +85,10 @@ $(B)/$(1)/%.c.o: $(SRC)/%.c
 	@mkdir -p $$(dir $$@)
 	$$(CC) $$(CFLAGS) $$($(1)_FLAGS) -MMD -c "$$<" -o $$@
 
+$(B)/$(1)/%.s.o: $(SRC)/%.s
+	@mkdir -p $$(dir $$@)
+	$$(CC) $$(ARCHFLAGS) -c "$$<" -o $$@
+
 $(B)/$(1)/%.cpp.o: $(SRC)/%.cpp
 	@mkdir -p $$(dir $$@)
 	$$(CXX) $$(CXXFLAGS) $$($(1)_FLAGS) -MMD -c "$$<" -o $$@
@@ -87,16 +98,19 @@ endef
 
 $(foreach m,H2COMMON PLAYER CLFX GAME ENGINE,$(eval $(call compile_rules,$(m))))
 
-# Partial link, then hide everything that the module didn't export.
+# Partial link, then hide everything that the module didn't export. The MRISC32 partial link names
+# the constructor tables .ctor/.dtor, which the final link wouldn't pick up, so they're renamed back.
+LOCALIZE := $(OBJCOPY) --localize-hidden --rename-section .ctor=.ctors --rename-section .dtor=.dtors
+
 $(B)/h2common.o: $(call obj,H2COMMON,$(H2COMMON_SRC))
 	$(LDR) -o $@.tmp $^
-	$(OBJCOPY) --localize-hidden $@.tmp $@
+	$(LOCALIZE) $@.tmp $@
 
 # As above, then prefix the exports with the module name.
 define module_rule
 $(B)/$(1).o: $(call obj,$(2),$($(2)_SRC))
 	$(LDR) -o $$@.tmp $$^
-	$(OBJCOPY) --localize-hidden $$@.tmp $$@.tmp2
+	$(LOCALIZE) $$@.tmp $$@.tmp2
 	$(NM) -g --defined-only $$@.tmp2 | awk '{ print $$$$3 " $(1)__" $$$$3 }' > $$@.syms
 	$(OBJCOPY) --redefine-syms=$$@.syms $$@.tmp2 $$@
 endef
@@ -112,9 +126,14 @@ $(B)/modules_gen.c: $(B)/player.o $(B)/clfx.o $(B)/game.o $(SRC)/mc1/genmodules.
 $(B)/modules_gen.o: $(B)/modules_gen.c
 	$(CC) $(CFLAGS) -I$(SRC)/mc1/platform -c $< -o $@
 
+# The SDK's app script, plus the C++ exception tables that the game's scripting code pulls in.
+$(B)/app-xram-cxx.ld: $(MC1_SDK)/lib/app-xram.ld
+	@mkdir -p $(B)
+	sed 's/^\( *\)\*(\.rodata\*)/&\n\1*(.gcc_except_table*)/' $< > $@
+
 $(B)/heretic2: $(call obj,ENGINE,$(ENGINE_SRC)) $(B)/h2common.o $(B)/player.o $(B)/clfx.o $(B)/game.o \
-		$(B)/modules_gen.o
-	$(CXX) $(ARCHFLAGS) -o $@ $^ $(LDLIBS)
+		$(B)/modules_gen.o $(LDSCRIPT)
+	$(CXX) $(ARCHFLAGS) $(LDFLAGS) -o $@ $(filter %.o,$^) $(LDLIBS)
 
 clean:
 	rm -rf $(B)

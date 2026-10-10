@@ -1,7 +1,7 @@
 // System layer for MC1 and for the native test build: newlib/POSIX files and time, stdout console.
 
+#include <ctype.h>
 #include <dirent.h>
-#include <fnmatch.h>
 #include <sys/time.h>
 #include <unistd.h>
 #include <windows.h>
@@ -134,6 +134,32 @@ static char findpattern[MAX_OSPATH];
 static char findpath[MAX_OSPATH];
 static DIR* finddir;
 
+// Matches * and ? wildcards, ignoring case.
+static qboolean WildcardMatch(const char* pattern, const char* name)
+{
+	for (; *pattern != 0; pattern++, name++)
+	{
+		if (*pattern == '*')
+		{
+			for (const char* rest = name;; rest++)
+			{
+				if (WildcardMatch(pattern + 1, rest))
+					return true;
+				if (*rest == 0)
+					return false;
+			}
+		}
+
+		if (*name == 0)
+			return false;
+
+		if (*pattern != '?' && tolower((unsigned char)*pattern) != tolower((unsigned char)*name))
+			return false;
+	}
+
+	return (*name == 0);
+}
+
 static qboolean MatchesAttributes(const char* path, const uint musthave, const uint canthave)
 {
 	const qboolean is_dir = Sys_IsDir(path);
@@ -155,7 +181,7 @@ char* Sys_FindNext(const uint musthave, const uint canthave)
 		if (strcmp(d->d_name, ".") == 0 || strcmp(d->d_name, "..") == 0)
 			continue;
 
-		if (fnmatch(findpattern, d->d_name, FNM_CASEFOLD) != 0)
+		if (!WildcardMatch(findpattern, d->d_name))
 			continue;
 
 		Com_sprintf(findpath, sizeof(findpath), "%s/%s", findbase, d->d_name);
@@ -194,8 +220,10 @@ void Sys_FindClose(void)
 
 qboolean Sys_GetWorkingDir(char* buffer, const size_t len)
 {
+#ifndef MC1
 	if (getcwd(buffer, len) != NULL)
 		return true;
+#endif
 
 	strcpy_s(buffer, len, ".");
 	return true;
