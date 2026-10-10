@@ -22,6 +22,7 @@
 #define __declspec(x) H2_DECLSPEC_##x
 #define __forceinline inline __attribute__((always_inline))
 #define __cdecl
+#define _inline static inline
 #define WINAPI
 
 #ifndef __cplusplus

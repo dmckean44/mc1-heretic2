@@ -65,7 +65,8 @@ ENGINE_SRC := $(filter-out $(ENGINE_PLATFORM),$(call find,quake2/src)) \
 	qcommon/Skeletons.c qcommon/turbsin.c \
 	$(call find,mc1/platform) $(call find,ref_soft)
 ENGINE_FLAGS := -DQUAKE2_DLL -I$(SRC)/quake2/src -I$(SRC)/../include -I$(SRC)/quake2/src/client \
-	-I$(SRC)/quake2/src/server -I$(SRC)/qcommon -I$(SRC)/game/src -I$(SRC)/Player/src -I$(SRC)/ref_soft/src -I$(SRC)/mc1/platform \
+	-I$(SRC)/quake2/src/server -I$(SRC)/qcommon -I$(SRC)/game/src -I$(SRC)/Player/src -I$(SRC)/ref_soft/src -I$(SRC)/ref_soft/src/header -I$(SRC)/ref_soft/src/Skeletons \
+	-I$(SRC)/mc1/platform \
 	-I$(SRC)/quake2/src/win32/dll_io
 
 obj = $(patsubst %,$(B)/$(1)/%.o,$(2))
