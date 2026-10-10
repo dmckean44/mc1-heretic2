@@ -315,21 +315,37 @@ static unsigned long long CycleCount(void)
 #endif
 }
 
+static void PrintProfileMark(const char* tag, const int frame)
+{
+	Com_Printf("%s cycles=%.0f frame=%d\n", tag, (double)CycleCount(), frame);
+
+#ifdef MC1
+	// The simulator's pixel engine model counts its busy cycles and the CPU's stalls.
+	const volatile uint32_t* pe = (const volatile uint32_t*)0xc0000200;
+	if ((pe[0] >> 16) == 0x5045)
+		Com_Printf("%s pe_busy=%u pe_stall=%u\n", tag, (unsigned)pe[6], (unsigned)pe[8]);
+#endif
+}
+
+static cvar_t* fixedtime;
+static cvar_t* prof_start;
+static cvar_t* prof_frames;
+
 // Prints the cycle counter at frame prof_start and prof_frames frames later, then quits.
 static void ProfileMarks(const int frame)
 {
-	const int start = (int)Cvar_VariableValue("prof_start");
-	const int count = (int)Cvar_VariableValue("prof_frames");
+	const int start = (int)prof_start->value;
+	const int count = (int)prof_frames->value;
 
 	if (count <= 0)
 		return;
 
 	if (frame == start)
-		Com_Printf("PROF_START cycles=%.0f frame=%d\n", (double)CycleCount(), frame);
+		PrintProfileMark("PROF_START", frame);
 
 	if (frame == start + count)
 	{
-		Com_Printf("PROF_END cycles=%.0f frame=%d\n", (double)CycleCount(), frame);
+		PrintProfileMark("PROF_END", frame);
 		Com_Quit();
 	}
 }
@@ -342,20 +358,24 @@ int main(int argc, char** argv)
 	H2Common_Init();
 	Qcommon_Init(argc, argv);
 
+	fixedtime = Cvar_Get("fixedtime", "0", 0);
+	prof_start = Cvar_Get("prof_start", "0", 0);
+	prof_frames = Cvar_Get("prof_frames", "0", 0);
+
 	long long oldtime = Sys_Microseconds();
 
 	for (int frame = 0;; frame++)
 	{
-		const int fixedtime = (int)Cvar_VariableValue("fixedtime");
+		const int step = (int)fixedtime->value;
 		long long newtime;
 
 		RunInputScript(frame);
 		ProfileMarks(frame);
 
-		virtual_clock = (fixedtime > 0);
+		virtual_clock = (step > 0);
 		if (virtual_clock)
 		{
-			virtual_us = oldtime + fixedtime;
+			virtual_us = oldtime + step;
 			newtime = virtual_us;
 		}
 		else

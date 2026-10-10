@@ -62,6 +62,7 @@ typedef struct image_s
 {
 	char		name[MAX_QPATH];	// game path, including extension
 	unsigned	hash;
+	struct image_s	*hash_next;
 	imagetype_t	type;
 	int		width, height;
 	int		asset_width, asset_height;	// asset texture size

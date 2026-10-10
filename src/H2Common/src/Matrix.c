@@ -162,7 +162,7 @@ H2COMMON_API double Matricies3FromDirAndUp(const vec3_t direction, const vec3_t 
 	matrix3_t m_tmp = { 0 };
 	m_tmp[0][0] = 1.0f;
 
-	double roll = -(atan2((double)v_rotated_up[2], (double)v_rotated_up[1]) - ANGLE_90);
+	float roll = -(atan2f(v_rotated_up[2], v_rotated_up[1]) - ANGLE_90);
 
 	m_tmp[1][1] = cosf((float)roll);
 	m_tmp[2][2] = m_tmp[1][1];
@@ -177,7 +177,7 @@ H2COMMON_API double Matricies3FromDirAndUp(const vec3_t direction, const vec3_t 
 		CreatePitchMatrix(m_pitch, pitch);
 		CreateYawMatrix(m_yaw, -yaw);
 		Matrix3MultByMatrix3(m_yaw, m_pitch, partial_to_local);
-		roll *= -1.0;
+		roll *= -1.0f;
 	}
 
 	return roll;

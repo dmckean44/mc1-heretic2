@@ -72,6 +72,31 @@ R_PutPixel(pixel_t *dest, pixel_t c, int alpha)
 	}
 }
 
+static void
+R_BlitRow(const byte *src, int sfrac, int sstep, pixel_t *dest, int w, int alpha, const byte *remap)
+{
+	const byte *alphamap = vid_alphamap;
+	int u;
+
+	for (u = 0; u < w; u++, sfrac += sstep)
+	{
+		pixel_t c = src[sfrac >> 16];
+
+		if (c == TRANSPARENT_COLOR)
+			continue;
+
+		if (remap)
+			c = remap[c];
+
+		if (alpha == ALPHA_OPAQUE)
+			dest[u] = c;
+		else if (alpha == ALPHA_66)
+			dest[u] = alphamap[c * 256 + dest[u]];
+		else
+			dest[u] = alphamap[c + dest[u] * 256];
+	}
+}
+
 /*
  * Draws the (s, t, sw, th) rectangle of an image's first mip level scaled into (x, y, w, h),
  * skipping transparent texels.
@@ -80,7 +105,7 @@ static void
 R_BlitImage(const image_t *image, int s, int t, int sw, int th, int x, int y, int w, int h,
 	int alpha, const byte *remap)
 {
-	int sstep, tstep, sfrac0, tfrac, u, v;
+	int sstep, tstep, sfrac0, tfrac, v;
 
 	if (!image || w <= 0 || h <= 0 || sw <= 0 || th <= 0 || alpha == ALPHA_NONE)
 		return;
@@ -113,17 +138,8 @@ R_BlitImage(const image_t *image, int s, int t, int sw, int th, int x, int y, in
 	{
 		const byte *src = image->pixels[0] + (t + (tfrac >> 16)) * image->width + s;
 		pixel_t *dest = vid_buffer + (y + v) * vid_buffer_width + x;
-		int sfrac = sfrac0;
 
-		for (u = 0; u < w; u++, sfrac += sstep)
-		{
-			pixel_t c = src[sfrac >> 16];
-
-			if (c == TRANSPARENT_COLOR)
-				continue;
-
-			R_PutPixel(&dest[u], remap ? remap[c] : c, alpha);
-		}
+		R_BlitRow(src, sfrac0, sstep, dest, w, alpha, remap);
 	}
 }
 

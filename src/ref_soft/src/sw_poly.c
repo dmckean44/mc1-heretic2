@@ -63,45 +63,59 @@ static qboolean		r_polynodepth;
 static void
 R_DrawSpanletBlend(const int *r_turb_turb)
 {
-	do
+	const pixel_t *pbase = s_spanletvars.pbase;
+	const byte *remap = r_polyremap;
+	const qboolean nodepth = r_polynodepth;
+	const int width = cachewidth;
+	const int sstep = s_spanletvars.sstep;
+	const int tstep = s_spanletvars.tstep;
+	const int izistep = s_spanletvars.izistep;
+	const int count = s_spanletvars.spancount;
+	pixel_t *pdest = s_spanletvars.pdest;
+	zbufvalue_t *pz = s_spanletvars.pz;
+	int s = s_spanletvars.s;
+	int t = s_spanletvars.t;
+	int izi = s_spanletvars.izi;
+	int i;
+
+	if (r_polyblend == RB_OPAQUE)
 	{
-		unsigned btemp;
-
-		btemp = *(s_spanletvars.pbase + (s_spanletvars.s >> SHIFT16XYZ) +
-			(s_spanletvars.t >> SHIFT16XYZ) * cachewidth);
-
-		if (btemp != TRANSPARENT_COLOR &&
-			(r_polynodepth || ((zvalue_t)*s_spanletvars.pz) <= (s_spanletvars.izi >> SHIFT16XYZ)))
+		for (i = 0; i < count; i++, pdest++, pz++, s += sstep, t += tstep, izi += izistep)
 		{
-			pixel_t *pdest = s_spanletvars.pdest;
+			unsigned c = pbase[(s >> SHIFT16XYZ) + (t >> SHIFT16XYZ) * width];
 
-			if (r_polyremap)
-				btemp = r_polyremap[btemp];
+			if (c == TRANSPARENT_COLOR || (!nodepth && (zvalue_t)*pz > (izi >> SHIFT16XYZ)))
+				continue;
 
-			switch (r_polyblend)
-			{
-			case RB_ADD:
-				*pdest = vid_additivemap[btemp * 256 + *pdest];
-				break;
-			case RB_33:
-				*pdest = vid_alphamap[btemp + *pdest * 256];
-				break;
-			case RB_66:
-				*pdest = vid_alphamap[btemp * 256 + *pdest];
-				break;
-			default:
-				*s_spanletvars.pz = (zbufvalue_t)(s_spanletvars.izi >> SHIFT16XYZ);
-				*pdest = btemp;
-				break;
-			}
+			*pz = (zbufvalue_t)(izi >> SHIFT16XYZ);
+			*pdest = remap ? remap[c] : c;
 		}
+	}
+	else
+	{
+		const byte *table = (r_polyblend == RB_ADD) ? vid_additivemap : vid_alphamap;
+		const int src_shift = (r_polyblend == RB_33) ? 0 : 8;
+		const int dest_shift = 8 - src_shift;
 
-		s_spanletvars.izi += s_spanletvars.izistep;
-		s_spanletvars.pdest++;
-		s_spanletvars.pz++;
-		s_spanletvars.s += s_spanletvars.sstep;
-		s_spanletvars.t += s_spanletvars.tstep;
-	} while (--s_spanletvars.spancount > 0);
+		for (i = 0; i < count; i++, pdest++, pz++, s += sstep, t += tstep, izi += izistep)
+		{
+			unsigned c = pbase[(s >> SHIFT16XYZ) + (t >> SHIFT16XYZ) * width];
+
+			if (c == TRANSPARENT_COLOR || (!nodepth && (zvalue_t)*pz > (izi >> SHIFT16XYZ)))
+				continue;
+
+			if (remap)
+				c = remap[c];
+			*pdest = table[(c << src_shift) | (*pdest << dest_shift)];
+		}
+	}
+
+	s_spanletvars.pdest = pdest;
+	s_spanletvars.pz = pz;
+	s_spanletvars.s = s;
+	s_spanletvars.t = t;
+	s_spanletvars.izi = izi;
+	s_spanletvars.spancount = 0;
 }
 
 /*

@@ -25,6 +25,9 @@ static image_t		*r_whitetexture_mip = NULL;
 image_t			*r_notexture_mip;
 static image_t		r_images[MAX_RIMAGES];
 static int		numr_images;
+
+#define IMAGE_HASH_SIZE	256
+static image_t		*r_image_hash[IMAGE_HASH_SIZE];
 static int		image_max = 0;
 
 
@@ -288,6 +291,28 @@ R_ImageNameHash(const char *name)
 	return hash;
 }
 
+static void
+R_HashImage(image_t *image)
+{
+	image_t **bucket = &r_image_hash[image->hash & (IMAGE_HASH_SIZE - 1)];
+
+	image->hash_next = *bucket;
+	*bucket = image;
+}
+
+static void
+R_RehashImages(void)
+{
+	int i;
+
+	memset(r_image_hash, 0, sizeof(r_image_hash));
+	for (i = 0; i < numr_images; i++)
+	{
+		if (r_images[i].registration_sequence)
+			R_HashImage(&r_images[i]);
+	}
+}
+
 static image_t *
 R_NewImage(const char *name, int width, int height, imagetype_t type)
 {
@@ -304,6 +329,7 @@ R_NewImage(const char *name, int width, int height, imagetype_t type)
 	image->width = image->asset_width = width;
 	image->height = image->asset_height = height;
 	image->type = type;
+	R_HashImage(image);
 
 	image->pixels[0] = malloc(full_size);
 	if (!image->pixels[0])
@@ -451,7 +477,7 @@ R_FindImage(const char *name, imagetype_t type)
 	}
 
 	hash = R_ImageNameHash(path);
-	for (i=0, image=r_images ; i<numr_images ; i++,image++)
+	for (image = r_image_hash[hash & (IMAGE_HASH_SIZE - 1)]; image; image = image->hash_next)
 	{
 		if (image->hash == hash && !strcmp(path, image->name))
 		{
@@ -502,6 +528,8 @@ R_FreeUnusedImages (void)
 		free (image->pixels[0]); // the other mip levels just follow
 		memset(image, 0, sizeof(*image));
 	}
+
+	R_RehashImages();
 }
 
 qboolean
@@ -650,6 +678,8 @@ R_ShutdownImages (void)
 
 		memset(image, 0, sizeof(*image));
 	}
+
+	R_RehashImages();
 
 	if (d_16to8table)
 		free(d_16to8table);
