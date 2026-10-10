@@ -403,15 +403,22 @@ R_DrawSurfaceEngine (const drawsurf_t *drawsurf, qboolean engine_lights,
 		while (surf->samples && maps < MAXLIGHTMAPS && surf->styles[maps] != 255)
 			maps++;
 
-		PE_Begin(PE_LITSURF, 17 + 4 * ndlights);
+		const int light_words = (pe_version >= 4) ? 5 : 4;
+
+		PE_Begin(PE_LITSURF, 17 + light_words * ndlights);
 		R_SendSurfaceHeader (source, texwidth, tmax, soffset, toffset, numh, numv, level, drawsurf);
 		PE_Ptr(surf->samples);
 		PE_Word(maps);
 		for (u = 0; u < MAXLIGHTMAPS; u++)
 			PE_Word(drawsurf->lightadj[u]);
-		PE_Word(ndlights);
-		for (u = 0; u < ndlights * 4; u++)
-			PE_Float(dlights[u]);
+		PE_Word(ndlights | ((pe_version >= 4) ? PE_LITSURF_SCALED : 0));
+		for (u = 0; u < ndlights; u++)
+		{
+			int w;
+
+			for (w = 0; w < light_words; w++)
+				PE_Float(dlights[u * PE_LIGHT_WORDS + w]);
+		}
 		return;
 	}
 
@@ -598,7 +605,7 @@ D_CacheSurface
 surfcache_t *
 D_CacheSurface (const entity_t *currententity, msurface_t *surface, int miplevel, qboolean lazy)
 {
-	float dlights[MAX_DLIGHTS * 4];
+	float dlights[MAX_DLIGHTS * PE_LIGHT_WORDS];
 	int ndlights = 0;
 	qboolean engine_lights;
 

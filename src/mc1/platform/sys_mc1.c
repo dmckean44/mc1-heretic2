@@ -10,6 +10,10 @@
 #include <mc1/newlib_integ.h>
 #endif
 
+#ifdef MC1
+#include <mc1/mmio.h>
+#endif
+
 #include "platform.h"
 #include "qcommon.h"
 #include "client/input.h"
@@ -294,6 +298,42 @@ static void RunInputScript(const int frame)
 	}
 }
 
+static unsigned long long CycleCount(void)
+{
+#ifdef MC1
+	uint32_t hi, lo;
+
+	do
+	{
+		hi = MMIO(CLKCNTHI);
+		lo = MMIO(CLKCNTLO);
+	} while (hi != MMIO(CLKCNTHI));
+
+	return ((unsigned long long)hi << 32) | lo;
+#else
+	return (unsigned long long)Sys_Microseconds();
+#endif
+}
+
+// Prints the cycle counter at frame prof_start and prof_frames frames later, then quits.
+static void ProfileMarks(const int frame)
+{
+	const int start = (int)Cvar_VariableValue("prof_start");
+	const int count = (int)Cvar_VariableValue("prof_frames");
+
+	if (count <= 0)
+		return;
+
+	if (frame == start)
+		Com_Printf("PROF_START cycles=%.0f frame=%d\n", (double)CycleCount(), frame);
+
+	if (frame == start + count)
+	{
+		Com_Printf("PROF_END cycles=%.0f frame=%d\n", (double)CycleCount(), frame);
+		Com_Quit();
+	}
+}
+
 int main(int argc, char** argv)
 {
 #if defined(MC1) && !defined(MR32SIM)
@@ -310,6 +350,7 @@ int main(int argc, char** argv)
 		long long newtime;
 
 		RunInputScript(frame);
+		ProfileMarks(frame);
 
 		virtual_clock = (fixedtime > 0);
 		if (virtual_clock)

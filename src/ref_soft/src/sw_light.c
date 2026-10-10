@@ -368,8 +368,9 @@ R_AddDynamicLights (drawsurf_t* drawsurf)
 R_SurfaceDynamicLights
 
 The dynamic lights on a surface as the pixel engine takes them: radius,
-cutoff, and position in the surface's lightmap space, computed as in
-R_AddDynamicLights. Returns -1 for negative lights, which only the CPU does.
+cutoff, position in the surface's lightmap space and brightness, computed as in
+R_AddDynamicLights. Returns -1 for lights that only the CPU does: negative
+ones, and dimmed ones on engines before version 4.
 ===============
 */
 int
@@ -385,7 +386,7 @@ R_SurfaceDynamicLights (const msurface_t *surf, float *out)
 	{
 		const dlight_t *dl = &r_newrefdef.dlights[lnum];
 		vec3_t impact;
-		float dist, rad, minlight, *local = &out[n * 4 + 2];
+		float dist, rad, minlight, scale, *local = &out[n * PE_LIGHT_WORDS + 2];
 		int i;
 
 		if (!(surf->dlightbits & (1 << lnum)))
@@ -404,6 +405,10 @@ R_SurfaceDynamicLights (const msurface_t *surf, float *out)
 			return -1;
 		minlight = rad - minlight;
 
+		scale = 256 * R_DlightBrightness(dl);
+		if (scale != 256 && pe_version < 4)
+			return -1;
+
 		for (i = 0; i < 3; i++)
 			impact[i] = dl->origin[i] - surf->plane->normal[i]*dist;
 
@@ -412,8 +417,9 @@ R_SurfaceDynamicLights (const msurface_t *surf, float *out)
 		local[0] -= surf->texturemins[0];
 		local[1] -= surf->texturemins[1];
 
-		out[n * 4] = rad;
-		out[n * 4 + 1] = minlight;
+		out[n * PE_LIGHT_WORDS] = rad;
+		out[n * PE_LIGHT_WORDS + 1] = minlight;
+		out[n * PE_LIGHT_WORDS + 4] = scale;
 		n++;
 	}
 	return n;

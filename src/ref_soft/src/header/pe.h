@@ -36,6 +36,8 @@ enum {
 };
 
 #define PE_MAX_LIGHT_SAMPLES	1024
+#define PE_LIGHT_WORDS		5
+#define PE_LITSURF_SCALED	0x10000
 
 enum {
 	PE_SPAN_TEX = 1,
