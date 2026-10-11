@@ -311,6 +311,21 @@ R_AliasSetSkin(const image_t *skin)
 		PE_SetSkin(r_affinetridesc.pskin, r_affinetridesc.skinwidth);
 }
 
+// The test R_DrawTriangle makes, done before the texture coordinates are set up.
+static inline qboolean
+R_TriangleFacesViewer(const finalvert_t *a, const finalvert_t *b, const finalvert_t *c)
+{
+	const int dv0_ab = a->cv.u - b->cv.u;
+	const int dv1_ab = a->cv.v - b->cv.v;
+	const int dv0_ac = a->cv.u - c->cv.u;
+	const int dv1_ac = a->cv.v - c->cv.v;
+
+	if (!(dv0_ab | dv1_ab) || !(dv0_ac | dv1_ac))
+		return false;
+
+	return dv0_ac * dv1_ab - dv0_ab * dv1_ac < 0;
+}
+
 static void
 R_AliasDrawTriangles(const entity_t *currententity, finalvert_t *verts, int first, int count)
 {
@@ -329,6 +344,9 @@ R_AliasDrawTriangles(const entity_t *currententity, finalvert_t *verts, int firs
 
 		if (pfv[0]->flags & pfv[1]->flags & pfv[2]->flags)
 			continue;	// completely clipped
+
+		if (!(pfv[0]->flags | pfv[1]->flags | pfv[2]->flags) && !R_TriangleFacesViewer(pfv[0], pfv[1], pfv[2]))
+			continue;
 
 		for (k = 0; k < 3; k++)
 		{

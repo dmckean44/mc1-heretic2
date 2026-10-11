@@ -78,6 +78,19 @@ R_BlitRow(const byte *src, int sfrac, int sstep, pixel_t *dest, int w, int alpha
 	const byte *alphamap = vid_alphamap;
 	int u;
 
+	if (alpha == ALPHA_OPAQUE && !remap && sstep == (1 << 16))
+	{
+		src += sfrac >> 16;
+		for (u = 0; u < w; u++)
+		{
+			const pixel_t c = src[u];
+
+			if (c != TRANSPARENT_COLOR)
+				dest[u] = c;
+		}
+		return;
+	}
+
 	for (u = 0; u < w; u++, sfrac += sstep)
 	{
 		pixel_t c = src[sfrac >> 16];

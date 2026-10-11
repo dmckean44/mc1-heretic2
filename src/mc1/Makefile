@@ -81,15 +81,15 @@ obj = $(patsubst %,$(B)/$(1)/%.o,$(2))
 all: $(B)/heretic2
 
 define compile_rules
-$(B)/$(1)/%.c.o: $(SRC)/%.c
+$(B)/$(1)/%.c.o: $(SRC)/%.c Makefile
 	@mkdir -p $$(dir $$@)
 	$$(CC) $$(CFLAGS) $$($(1)_FLAGS) -MMD -c "$$<" -o $$@
 
-$(B)/$(1)/%.s.o: $(SRC)/%.s
+$(B)/$(1)/%.s.o: $(SRC)/%.s Makefile
 	@mkdir -p $$(dir $$@)
 	$$(CC) $$(ARCHFLAGS) -c "$$<" -o $$@
 
-$(B)/$(1)/%.cpp.o: $(SRC)/%.cpp
+$(B)/$(1)/%.cpp.o: $(SRC)/%.cpp Makefile
 	@mkdir -p $$(dir $$@)
 	$$(CXX) $$(CXXFLAGS) $$($(1)_FLAGS) -MMD -c "$$<" -o $$@
 
