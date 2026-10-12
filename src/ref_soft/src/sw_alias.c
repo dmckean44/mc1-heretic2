@@ -326,11 +326,37 @@ R_TriangleFacesViewer(const finalvert_t *a, const finalvert_t *b, const finalver
 	return dv0_ac * dv1_ab - dv0_ab * dv1_ac < 0;
 }
 
+static qboolean r_alias_mesh;		// the engine draws the unclipped triangles from memory
+static unsigned r_alias_mesh_fence;	// the last MESH command, which reads finalverts
+
 static void
-R_AliasDrawTriangles(const entity_t *currententity, finalvert_t *verts, int first, int count)
+R_AliasMesh(const finalvert_t *verts, int first, int count)
+{
+	if (count <= 0)
+		return;
+
+	r_alias_mesh_fence = PE_Begin(PE_MESH, 6);
+	PE_Ptr(verts);
+	PE_Word(sizeof(finalvert_t));
+	PE_Ptr(s_pmdl->tris);
+	PE_Ptr(&s_pmdl->node_tris[first]);
+	PE_Word(count);
+	PE_Ptr(s_pmdl->st_verts);
+}
+
+static void
+R_AliasDrawTriangles(const entity_t *currententity, finalvert_t *verts, int first, int count,
+	qboolean clipped)
 {
 	const fmstvert_t *pstverts = s_pmdl->st_verts;
+	int mesh_first = first;
 	int i;
+
+	if (r_alias_mesh && !clipped)
+	{
+		R_AliasMesh(verts, first, count);
+		return;
+	}
 
 	for (i = first; i < first + count; i++)
 	{
@@ -342,11 +368,19 @@ R_AliasDrawTriangles(const entity_t *currententity, finalvert_t *verts, int firs
 		pfv[1] = &verts[ptri->index_xyz[1]];
 		pfv[2] = &verts[ptri->index_xyz[2]];
 
+		if (!(pfv[0]->flags | pfv[1]->flags | pfv[2]->flags))
+		{
+			if (r_alias_mesh || !R_TriangleFacesViewer(pfv[0], pfv[1], pfv[2]))
+				continue;
+		}
+		else if (r_alias_mesh)
+		{
+			R_AliasMesh(verts, mesh_first, i - mesh_first);
+			mesh_first = i + 1;
+		}
+
 		if (pfv[0]->flags & pfv[1]->flags & pfv[2]->flags)
 			continue;	// completely clipped
-
-		if (!(pfv[0]->flags | pfv[1]->flags | pfv[2]->flags) && !R_TriangleFacesViewer(pfv[0], pfv[1], pfv[2]))
-			continue;
 
 		for (k = 0; k < 3; k++)
 		{
@@ -359,6 +393,9 @@ R_AliasDrawTriangles(const entity_t *currententity, finalvert_t *verts, int firs
 		else
 			R_AliasClipTriangle(currententity, pfv[0], pfv[1], pfv[2]);
 	}
+
+	if (r_alias_mesh)
+		R_AliasMesh(verts, mesh_first, first + count - mesh_first);
 }
 
 /*
@@ -375,6 +412,8 @@ R_AliasPreparePoints (entity_t *currententity, const model_t *currentmodel, fina
 	const fmnodeinfo_t *nodeinfo = currententity->fmnodeinfo;
 	const image_t *skin = R_AliasSkin(currententity, currentmodel);
 	void (*drawspans)(const entity_t *, spanpackage_t *) = d_pdrawspans;
+	const qboolean model_pe = pe_alias;
+	int clip_flags = 0;
 	int n;
 
 	if ((verts + s_pmdl->header.num_xyz) >= verts_max)
@@ -397,6 +436,12 @@ R_AliasPreparePoints (entity_t *currententity, const model_t *currentmodel, fina
 #endif
 	{
 		R_AliasTransformFinalVerts(s_pmdl->header.num_xyz, verts, r_lastframe->verts, r_thisframe->verts);
+	}
+
+	if (pe_alias && pe_version >= 5)
+	{
+		for (n = 0; n < s_pmdl->header.num_xyz; n++)
+			clip_flags |= verts[n].flags;
 	}
 
 	R_AliasSetSkin(skin);
@@ -423,16 +468,24 @@ R_AliasPreparePoints (entity_t *currententity, const model_t *currentmodel, fina
 		if (!node_skin)
 			continue;
 
+		// Translucent nodes are drawn by the CPU.
+		pe_alias = model_pe && d_pdrawspans == R_PolysetDrawSpans8_Opaque;
+		if (model_pe && !pe_alias)
+			PE_Finish();
+		r_alias_mesh = pe_alias && pe_version >= 5;
+
 		if (node_skin != skin)
 			R_AliasSetSkin(node_skin);
 
-		R_AliasDrawTriangles(currententity, verts, s_pmdl->node_tris_range[n].first, s_pmdl->node_tris_range[n].count);
+		R_AliasDrawTriangles(currententity, verts, s_pmdl->node_tris_range[n].first,
+			s_pmdl->node_tris_range[n].count, clip_flags != 0);
 
 		if (node_skin != skin)
 			R_AliasSetSkin(skin);
 	}
 
 	d_pdrawspans = drawspans;
+	pe_alias = model_pe;
 }
 
 
@@ -982,6 +1035,30 @@ R_AliasSetUpLerpData(const entity_t *currententity, float backlerp)
 
 finalvert_t *finalverts = NULL, *finalverts_max = NULL;
 
+/*
+ * The engine reads the vertices of MESH commands after the CPU has moved on, so each model gets
+ * its own part of finalverts, and the buffer is only reused from the start once those are done.
+ */
+static finalvert_t *
+R_AliasVertexBuffer(int numverts)
+{
+	static int next;
+	finalvert_t *verts;
+
+	if (!pe_alias || pe_version < 5)
+		return finalverts;
+
+	if (next + numverts >= r_numallocatedverts)
+	{
+		PE_WaitFor(r_alias_mesh_fence);
+		next = 0;
+	}
+
+	verts = &finalverts[next];
+	next += numverts;
+	return verts;
+}
+
 extern void (*d_pdrawspans)(const entity_t *currententity, spanpackage_t *pspanpackage);
 void R_PolysetDrawSpans8_Opaque(const entity_t *currententity, spanpackage_t *pspanpackage);
 void R_PolysetDrawSpans8_33(const entity_t *currententity, spanpackage_t *pspanpackage);
@@ -1066,7 +1143,8 @@ R_AliasDrawModel(entity_t *currententity, const model_t *currentmodel)
 	else
 		s_ziscale = (float)0x8000 * (float)SHIFT16XYZ_MULT;
 
-	R_AliasPreparePoints(currententity, currentmodel, finalverts, finalverts_max, lerped);
+	R_AliasPreparePoints(currententity, currentmodel, R_AliasVertexBuffer(s_pmdl->header.num_xyz),
+		finalverts_max, lerped);
 
 	r_polyset_remap = NULL;
 }

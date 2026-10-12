@@ -30,7 +30,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #define NUMSTACKEDGES		2048
 #define NUMSTACKSURFACES	1024
-#define MAXALIASVERTS		2048
+#define MAXALIASVERTS		8192	// room for several models while the pixel engine reads them
 #define MAXLIGHTS		1024 // allow some very large lightmaps
 
 viddef_t	vid;
@@ -601,6 +601,7 @@ R_ReallocateMapBuffers (void)
 	{
 		if (finalverts)
 		{
+			PE_Finish();
 			free(finalverts);
 		}
 
