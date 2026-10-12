@@ -33,7 +33,8 @@ enum {
 	PE_FILL = 9,
 	PE_LITSURF = 10,
 	PE_DEFER = 11,
-	PE_MESH = 12
+	PE_MESH = 12,
+	PE_SPRITE = 13
 };
 
 #define PE_MAX_LIGHT_SAMPLES	1024

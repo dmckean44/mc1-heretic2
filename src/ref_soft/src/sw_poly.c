@@ -54,6 +54,7 @@ static void R_DrawPoly(int iswater, espan_t *spans);
 static int		r_polyblend;
 static const byte	*r_polyremap;
 static qboolean		r_polynodepth;
+static qboolean		r_polyengine;
 
 /*
 ** R_DrawSpanletBlend
@@ -991,8 +992,11 @@ R_ClipAndDrawPolyBlend(int blend, const byte *remap, qboolean nodepth)
 	r_polyremap = remap;
 	r_polynodepth = nodepth;
 	r_polydesc.drawspanlet = R_DrawSpanletBlend;
+	r_polyengine = pe_active && pe_version >= 6;
 
 	R_ClipAndDrawPolyCommon(false);
+
+	r_polyengine = false;
 }
 
 // isturbulent was qboolean. changed to int to allow passing more flags
@@ -1248,6 +1252,68 @@ R_PolygonCalculateGradients (float *p_ziorigin, float *p_zistepu, float *p_ziste
 ** This should NOT be called externally since it doesn't do clipping!
 */
 // iswater was qboolean. changed to support passing more flags
+/*
+ * Span lists of sprites drawn by the engine: each sprite gets its own part of the pool, which is
+ * only reused from the start once the engine is done with the last sprite.
+ */
+static unsigned r_sprite_fence;
+
+static espan_t *
+R_SpriteSpans(int count)
+{
+	static espan_t *pool;
+	static int size, next;
+
+	if (size < 4 * (vid_buffer_height + 2))
+	{
+		PE_Finish();
+		free(pool);
+		size = 4 * (vid_buffer_height + 2);
+		pool = malloc(size * sizeof(espan_t));
+		next = 0;
+	}
+
+	if (next + count > size)
+	{
+		PE_WaitFor(r_sprite_fence);
+		next = 0;
+	}
+
+	next += count;
+	return &pool[next - count];
+}
+
+static void
+R_SendSprite(const espan_t *spans, float d_ziorigin, float d_zistepu, float d_zistepv)
+{
+	const byte *remap = r_polyremap;
+	int i;
+
+	r_sprite_fence = PE_Begin(PE_SPRITE, remap ? 19 + 64 : 19);
+	PE_Ptr(spans);
+	PE_Ptr(cacheblock);
+	PE_Word(cachewidth);
+	PE_Word(sadjust);
+	PE_Word(tadjust);
+	PE_Word(bbextents);
+	PE_Word(bbextentt);
+	PE_Float(d_sdivzorigin);
+	PE_Float(d_sdivzstepu);
+	PE_Float(d_sdivzstepv);
+	PE_Float(d_tdivzorigin);
+	PE_Float(d_tdivzstepu);
+	PE_Float(d_tdivzstepv);
+	PE_Float(d_ziorigin);
+	PE_Float(d_zistepu);
+	PE_Float(d_zistepv);
+	PE_Word(r_polyblend | (r_polynodepth ? 4 : 0));
+	PE_Word(remap != NULL);
+	PE_Ptr(vid_additivemap);
+
+	for (i = 0; remap && i < 256; i += 4)
+		PE_Word(remap[i] | (remap[i + 1] << 8) | (remap[i + 2] << 16) | ((unsigned)remap[i + 3] << 24));
+}
+
 static void
 R_DrawPoly(int iswater, espan_t *spans)
 {
@@ -1256,7 +1322,8 @@ R_DrawPoly(int iswater, espan_t *spans)
 	emitpoint_t	*pverts;
 	float	d_ziorigin, d_zistepu, d_zistepv;
 
-	PE_Finish();
+	if (!r_polyengine)
+		PE_Finish();
 
 	// find the top and bottom vertices, and make sure there's at least one scan to
 	// draw
@@ -1297,10 +1364,17 @@ R_DrawPoly(int iswater, espan_t *spans)
 	pverts[nump] = pverts[0];
 
 	R_PolygonCalculateGradients(&d_ziorigin, &d_zistepu, &d_zistepv);
+
+	if (r_polyengine)
+		spans = R_SpriteSpans((int)(ymax - ymin) + 2);
+
 	R_PolygonScanLeftEdge(spans);
 	R_PolygonScanRightEdge(spans);
 
-	R_PolygonDrawSpans(spans, iswater, d_ziorigin, d_zistepu, d_zistepv);
+	if (r_polyengine)
+		R_SendSprite(spans, d_ziorigin, d_zistepu, d_zistepv);
+	else
+		R_PolygonDrawSpans(spans, iswater, d_ziorigin, d_zistepu, d_zistepv);
 }
 
 /*
