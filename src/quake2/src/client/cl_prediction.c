@@ -70,80 +70,103 @@ void CL_CheckPredictionError(void) //mxd. Called on packetframe.
 	}
 }
 
-//mxd. Split from CL_ClipMoveToEntities().
-static qboolean CL_BmodelInMovebox(const entity_state_t* ent, const vec3_t mb_mins, const vec3_t mb_maxs, int* headnode, const float** angles)
+// The entities that can block client traces in the current frame, each with the box that has to
+// overlap a trace's move box. Traces run many times per frame, the entities change once per frame.
+typedef struct
 {
-	// Special value for bmodel.
-	const cmodel_t* cmodel = cl.model_clip[ent->modelindex];
-	if (cmodel == NULL)
-		return false;
+	entity_state_t* ent;
+	vec3_t mins;
+	vec3_t maxs;
+} clip_entity_t;
 
-	// H2: check if inside move box...
-	float max_size = 0.0f;
-	for (int c = 0; c < 3; c++)
-		max_size = max(cmodel->maxs[c] - cmodel->mins[c], max_size);
+static clip_entity_t clip_entities[MAX_PARSE_ENTITIES];
+static int num_clip_entities;
+static int clip_entities_frame = -1;
+static int clip_entities_first = -1;
 
-	max_size *= 1.75f;
-
-	// Check if inside movebox.
-	for (int c = 0; c < 3; c++)
-		if (cmodel->mins[c] + ent->origin[c] - max_size > mb_maxs[c] || cmodel->maxs[c] + ent->origin[c] + max_size < mb_mins[c])
-			return false;
-
-	*headnode = cmodel->headnode;
-	*angles = ent->angles;
-
-	return true;
-}
-
-//mxd. Split from CL_ClipMoveToEntities().
-static qboolean CL_EntityInMovebox_H2R(const entity_state_t* ent, const vec3_t mb_mins, const vec3_t mb_maxs, int* headnode, const float** angles)
+// Encoded bbox (PROTOCOL_VERSION).
+static void CL_EntityBox(const entity_state_t* ent, vec3_t bmins, vec3_t bmaxs)
 {
-	// Greedily check for ent bbox intersection (max_size bbox is expected to encompass ent bbox rotated by any angle).
-	float max_size = 0.0f;
-	for (int c = 0; c < 3; c++)
-		max_size = max((ent->maxs[c] - ent->mins[c]) * 0.5f, max_size);
-
-	// Check if inside movebox.
-	for (int c = 0; c < 3; c++)
-		if (ent->origin[c] - max_size > mb_maxs[c] || ent->origin[c] + max_size < mb_mins[c])
-			return false;
-
-	*headnode = CM_HeadnodeForBox(ent->mins, ent->maxs);
-	*angles = ent->angles;
-
-	return true;
-}
-
-//mxd. Split from CL_ClipMoveToEntities().
-static qboolean CL_EntityInMovebox(const entity_state_t* ent, const vec3_t mb_mins, const vec3_t mb_maxs, int* headnode, const float** angles)
-{
-	// Encoded bbox.
 	const float x =  8.0f * (float)(ent->solid & 31);
 	const float zd = 8.0f * (float)((ent->solid >> 5) & 31);
 	const float zu = 8.0f * (float)((ent->solid >> 10) & 63) - 32;
 
-	const vec3_t bmins = { -x, -x, -zd };
-	const vec3_t bmaxs = {  x,  x,  zu };
+	VectorSet(bmins, -x, -x, -zd);
+	VectorSet(bmaxs,  x,  x,  zu);
+}
 
-	// Check if inside movebox.
-	for (int c = 0; c < 3; c++)
-		if (ent->origin[c] + bmins[c] > mb_maxs[c] || ent->origin[c] + bmaxs[c] < mb_mins[c])
-			return false;
+static void CL_UpdateClipEntities(void)
+{
+	if (cl.frame.serverframe == clip_entities_frame && cl.frame.parse_entities == clip_entities_first)
+		return;
 
-	*headnode = CM_HeadnodeForBox(bmins, bmaxs);
-	*angles = vec3_origin; // Boxes don't rotate.
+	clip_entities_frame = cl.frame.serverframe;
+	clip_entities_first = cl.frame.parse_entities;
+	num_clip_entities = 0;
 
-	return true;
+	for (int i = 0; i < cl.frame.num_entities; i++)
+	{
+		entity_state_t* ent = &cl_parse_entities[(cl.frame.parse_entities + i) & (MAX_PARSE_ENTITIES - 1)];
+		clip_entity_t* ce = &clip_entities[num_clip_entities];
+
+		if (ent->solid == 0) // SOLID_NOT
+			continue;
+
+		if (ent->solid == 31) // Bmodel.
+		{
+			const cmodel_t* cmodel = cl.model_clip[ent->modelindex];
+			if (cmodel == NULL)
+				continue;
+
+			// H2: check if inside move box...
+			float max_size = 0.0f;
+			for (int c = 0; c < 3; c++)
+				max_size = max(cmodel->maxs[c] - cmodel->mins[c], max_size);
+
+			max_size *= 1.75f;
+
+			for (int c = 0; c < 3; c++)
+			{
+				ce->mins[c] = cmodel->mins[c] + ent->origin[c] - max_size;
+				ce->maxs[c] = cmodel->maxs[c] + ent->origin[c] + max_size;
+			}
+		}
+		else if (cls.serverProtocol == H2R_PROTOCOL_VERSION) //mxd. Regular entity / H2R_PROTOCOL_VERSION.
+		{
+			// Greedily check for ent bbox intersection (max_size bbox is expected to encompass ent bbox rotated by any angle).
+			float max_size = 0.0f;
+			for (int c = 0; c < 3; c++)
+				max_size = max((ent->maxs[c] - ent->mins[c]) * 0.5f, max_size);
+
+			for (int c = 0; c < 3; c++)
+			{
+				ce->mins[c] = ent->origin[c] - max_size;
+				ce->maxs[c] = ent->origin[c] + max_size;
+			}
+		}
+		else // Regular entity / PROTOCOL_VERSION (original logic).
+		{
+			vec3_t bmins;
+			vec3_t bmaxs;
+			CL_EntityBox(ent, bmins, bmaxs);
+
+			for (int c = 0; c < 3; c++)
+			{
+				ce->mins[c] = ent->origin[c] + bmins[c];
+				ce->maxs[c] = ent->origin[c] + bmaxs[c];
+			}
+		}
+
+		ce->ent = ent;
+		num_clip_entities++;
+	}
 }
 
 void CL_ClipMoveToEntities(const vec3_t start, const vec3_t mins, const vec3_t maxs, const vec3_t end, trace_t* tr)
 {
-	int headnode;
-	const float* angles;
 	vec3_t mb_mins;
 	vec3_t mb_maxs;
-	
+
 	if (mins == NULL) // H2
 		mins = vec3_origin;
 
@@ -157,13 +180,12 @@ void CL_ClipMoveToEntities(const vec3_t start, const vec3_t mins, const vec3_t m
 		mb_maxs[i] = maxs[i] + max(start[i], end[i]) + 1.0f;
 	}
 
-	for (int i = 0; i < cl.frame.num_entities; i++)
-	{
-		const int num = (cl.frame.parse_entities + i) & (MAX_PARSE_ENTITIES - 1);
-		entity_state_t* ent = &cl_parse_entities[num];
+	CL_UpdateClipEntities();
 
-		if (ent->solid == 0) // SOLID_NOT
-			continue;
+	for (int i = 0; i < num_clip_entities; i++)
+	{
+		const clip_entity_t* ce = &clip_entities[i];
+		entity_state_t* ent = ce->ent;
 
 		if (trace_ignore_player && (ent->number == cl.playernum + 1)) // H2: extra trace_ignore_player check.
 			continue;
@@ -180,20 +202,32 @@ void CL_ClipMoveToEntities(const vec3_t start, const vec3_t mins, const vec3_t m
 			continue;
 
 		// Check if ent collides with movebox.
+		if (ce->mins[0] > mb_maxs[0] || ce->maxs[0] < mb_mins[0] ||
+			ce->mins[1] > mb_maxs[1] || ce->maxs[1] < mb_mins[1] ||
+			ce->mins[2] > mb_maxs[2] || ce->maxs[2] < mb_mins[2])
+			continue;
+
+		int headnode;
+		const float* angles;
+
 		if (ent_is_bmodel)
 		{
-			if (!CL_BmodelInMovebox(ent, mb_mins, mb_maxs, &headnode, &angles))
-				continue;
+			headnode = cl.model_clip[ent->modelindex]->headnode;
+			angles = ent->angles;
 		}
-		else if (cls.serverProtocol == H2R_PROTOCOL_VERSION) //mxd. Regular entity / H2R_PROTOCOL_VERSION.
+		else if (cls.serverProtocol == H2R_PROTOCOL_VERSION)
 		{
-			if (!CL_EntityInMovebox_H2R(ent, mb_mins, mb_maxs, &headnode, &angles))
-				continue;
+			headnode = CM_HeadnodeForBox(ent->mins, ent->maxs);
+			angles = ent->angles;
 		}
-		else // Regular entity / PROTOCOL_VERSION (original logic).
+		else
 		{
-			if (!CL_EntityInMovebox(ent, mb_mins, mb_maxs, &headnode, &angles))
-				continue;
+			vec3_t bmins;
+			vec3_t bmaxs;
+			CL_EntityBox(ent, bmins, bmaxs);
+
+			headnode = CM_HeadnodeForBox(bmins, bmaxs);
+			angles = vec3_origin; // Boxes don't rotate.
 		}
 
 		int brushmask = MASK_PLAYERSOLID;
@@ -206,8 +240,8 @@ void CL_ClipMoveToEntities(const vec3_t start, const vec3_t mins, const vec3_t m
 		vec3_t origin;
 		if (ent_is_bmodel && trace_lerp_bmodel_origin)
 		{
-			const centity_t* ce = &cl_entities[ent->number];
-			VectorLerp(ce->prev.origin, cl.lerpfrac, ce->current.origin, origin);
+			const centity_t* cent = &cl_entities[ent->number];
+			VectorLerp(cent->prev.origin, cl.lerpfrac, cent->current.origin, origin);
 		}
 		else
 		{

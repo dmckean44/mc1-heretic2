@@ -245,6 +245,10 @@ static float AddNormalizedAngles(const float angle1, const float angle2)
 
 qboolean OkToAutotarget(const edict_t* shooter, const edict_t* target) // mxd. Named 'ok_to_autotarget' in original version.
 {
+	// Single player only targets these, and svflags is one cache line per edict instead of four.
+	if (!DEATHMATCH && !COOP && !(target->svflags & (SVF_MONSTER | SVF_ALLOW_AUTO_TARGET)))
+		return false;
+
 	if (!target->inuse || target->solid == SOLID_NOT || target->health <= 0 || target == shooter || (target->svflags & SVF_NO_AUTOTARGET))
 		return false;
 

@@ -14,6 +14,7 @@
 #define HALO_MIN_CAMERA_DISTANCE	512.0f //mxd
 #define HALO_MAX_ALPHA				0.7f //mxd
 #define HALO_MIN_ALPHA				0.01f //mxd
+#define HALO_TRACE_INTERVAL			100 // Visibility traces are expensive: at most one per halo every 100 ms, the original update rate.
 
 static struct model_s* halo_models[2];
 
@@ -63,13 +64,18 @@ static qboolean HaloUpdate(client_entity_t* self, centity_t* owner)
 	}
 	else
 	{
-		// Determine visibility. //mxd. Trace from camera origin to our origin (otherwise we'll get startsolid/fraction:0 trace).
-		trace_t trace;
-		fxi.Trace(fxi.cl->refdef.vieworg, vec3_origin, vec3_origin, self->r.origin, (CONTENTS_SOLID | CONTENTS_MONSTER | CONTENTS_DEADMONSTER), CTF_CLIP_TO_ALL, &trace);
+		if (fx_time - self->halo_trace_time >= HALO_TRACE_INTERVAL || fx_time < self->halo_trace_time)
+		{
+			// Determine visibility. //mxd. Trace from camera origin to our origin (otherwise we'll get startsolid/fraction:0 trace).
+			trace_t trace;
+			fxi.Trace(fxi.cl->refdef.vieworg, vec3_origin, vec3_origin, self->r.origin, (CONTENTS_SOLID | CONTENTS_MONSTER | CONTENTS_DEADMONSTER), CTF_CLIP_TO_ALL, &trace);
 
-		//mxd. Because all FX_HALOs are attached to SOLID_BBOX entities, trace will stop at said entity, not at self->r.origin, so assume visible when trace hits closer than our radius...
-		const float trace_dist = VectorSeparation(self->r.origin, trace.endpos);
-		HaloUpdateVisibility(self, cam_dist, trace_dist < self->radius); //mxd
+			//mxd. Because all FX_HALOs are attached to SOLID_BBOX entities, trace will stop at said entity, not at self->r.origin, so assume visible when trace hits closer than our radius...
+			self->halo_visible = (VectorSeparation(self->r.origin, trace.endpos) < self->radius);
+			self->halo_trace_time = fx_time;
+		}
+
+		HaloUpdateVisibility(self, cam_dist, self->halo_visible); //mxd
 	}
 
 	//mxd. Randomize offsets and color of flame halo a bit.
@@ -127,6 +133,10 @@ void FXHalo(centity_t* owner, int type, int flags, vec3_t origin)
 	halo->radius = ((flags & CEF_FLAG6) ? 16.0f : 32.0f); //mxd
 	halo->alpha = HALO_MIN_ALPHA; //mxd. 0.6 in original logic.
 	halo->Update = HaloUpdate;
+
+	// Spread the halos' traces over frames.
+	static int num_halos;
+	halo->halo_trace_time = fx_time - HALO_TRACE_INTERVAL + (num_halos++ * 37) % HALO_TRACE_INTERVAL;
 
 	RE_SetupFlipSprite(&halo->r, halo->radius, halo->radius, halo->radius * 2.0f, halo->radius * 2.0f, irand(0, 1), irand(0, 1)); //mxd
 	AddEffect(owner, halo);

@@ -109,6 +109,9 @@ typedef struct client_entity_s
 	float debris_rest_pitch; // Pitch of chunk laying flat on ground. Original logic uses ANGLE_90.
 	qboolean debris_rest_pitch_setup;
 
+	int halo_trace_time; // Last time FX_HALO traced its visibility.
+	qboolean halo_visible;
+
 	//mxd. Extra bloodsplat props...
 	int bloodsplat_max_particles;
 	int bloodsplat_cur_particles;
