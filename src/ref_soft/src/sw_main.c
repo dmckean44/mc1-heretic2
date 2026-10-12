@@ -346,7 +346,8 @@ R_RegisterVariables (void)
 	r_novis = ri.Cvar_Get( "r_novis", "0", 0 );
 	r_modulate = ri.Cvar_Get("r_modulate", "1", CVAR_ARCHIVE);
 	r_fixsurfsky = ri.Cvar_Get("r_fixsurfsky", "0", CVAR_ARCHIVE);
-	r_cull = ri.Cvar_Get("r_cull", "1", 0);
+	// Off: R_RecursiveWorldNode's clip plane test already rejects nodes outside the frustum.
+	r_cull = ri.Cvar_Get("r_cull", "0", 0);
 	r_references = ri.Cvar_Get("r_references", "1", 0);
 	r_frameswap = ri.Cvar_Get("r_frameswap", "1", 0);
 	cl_camera_under_surface = ri.Cvar_Get("cl_camera_under_surface", "0", 0);
