@@ -28,7 +28,7 @@ else
   OBJCOPY := mrisc32-elf-objcopy
   NM := mrisc32-elf-nm
   MC1_SDK ?= $(HOME)/mc1-sdk
-  ARCHFLAGS := -O2 -g -fno-strict-aliasing -fwrapv -fsigned-char -fsingle-precision-constant -DMC1 \
+  ARCHFLAGS := -O2 -g -fno-strict-aliasing -fwrapv -fsigned-char -fsingle-precision-constant -DMC1 -ffunction-sections \
 	-I$(MC1_SDK)/include
   LDSCRIPT := $(B)/app-xram-cxx.ld
   LDFLAGS := -L$(MC1_SDK)/lib -T$(LDSCRIPT) -Wl,--defsym=__stack_size=8388608
@@ -129,10 +129,14 @@ $(B)/modules_gen.c: $(B)/player.o $(B)/clfx.o $(B)/game.o $(SRC)/mc1/genmodules.
 $(B)/modules_gen.o: $(B)/modules_gen.c
 	$(CC) $(CFLAGS) -I$(SRC)/mc1/platform -c $< -o $@
 
-# The SDK's app script, plus the C++ exception tables that the game's scripting code pulls in.
-$(B)/app-xram-cxx.ld: $(MC1_SDK)/lib/app-xram.ld
+# The SDK's app script, plus the C++ exception tables that the game's scripting code pulls in, with
+# the functions that run most per byte first (hot_functions.txt, made by hotlist.py) so they don't
+# evict each other from the instruction cache.
+$(B)/app-xram-cxx.ld: $(MC1_SDK)/lib/app-xram.ld $(SRC)/mc1/hot_functions.txt
 	@mkdir -p $(B)
-	sed 's/^\( *\)\*(\.rodata\*)/&\n\1*(.gcc_except_table*)/' $< > $@
+	sed 's/.*/        *(.text.&)/' $(SRC)/mc1/hot_functions.txt > $(B)/hot_sections.ld
+	sed -e 's/^\( *\)\*(\.rodata\*)/&\n\1*(.gcc_except_table*)/' \
+		-e '/\*(\.text\.start)/r $(B)/hot_sections.ld' $< > $@
 
 $(B)/heretic2: $(call obj,ENGINE,$(ENGINE_SRC)) $(B)/h2common.o $(B)/player.o $(B)/clfx.o $(B)/game.o \
 		$(B)/modules_gen.o $(LDSCRIPT)
