@@ -55,6 +55,8 @@ static int		r_polyblend;
 static const byte	*r_polyremap;
 static qboolean		r_polynodepth;
 static qboolean		r_polyengine;
+static int		r_polyturbulent;	// SURF_WARP or SURF_FLOWING when the engine draws a turbulent poly
+static surfcache_t	*r_polycache;		// the surface cache block the poly is textured from
 
 /*
 ** R_DrawSpanletBlend
@@ -1058,7 +1060,21 @@ R_ClipAndDrawPoly ( float alpha, int isturbulent, qboolean textured )
 		}
 	}
 
+	// The engine draws the textured ones that aren't stippled.
+	if (pe_active && pe_version >= 7 && textured && !sw_stipplealpha->value)
+	{
+		r_polyengine = true;
+		r_polyblend = (alpha == 1) ? RB_OPAQUE : ((alpha > 0.33F) ? RB_66 : RB_33);
+		r_polyremap = NULL;
+		r_polynodepth = false;
+		r_polyturbulent = (alpha == 1) ? 0 : isturbulent;
+	}
+
 	R_ClipAndDrawPolyCommon(isturbulent);
+
+	r_polyengine = false;
+	r_polyturbulent = 0;
+	r_polycache = NULL;
 }
 
 static void
@@ -1180,6 +1196,7 @@ R_BuildPolygonFromSurface(const entity_t *currententity, const model_t *currentm
 		surfcache_t *scache;
 
 		scache = D_CacheSurface(currententity, fa, 0, false);
+		r_polycache = scache;
 
 		r_polydesc.pixels       = scache->data;
 		r_polydesc.pixel_width  = scache->width;
@@ -1289,6 +1306,13 @@ R_SendSprite(const espan_t *spans, float d_ziorigin, float d_zistepu, float d_zi
 	const byte *remap = r_polyremap;
 	int i;
 
+	const int *turb = NULL;
+
+	if (r_polyturbulent & SURF_WARP)
+		turb = sintable + ((int)(r_newrefdef.time * SPEED) & (CYCLE - 1));
+	else if (r_polyturbulent)
+		turb = blanktable;
+
 	r_sprite_fence = PE_Begin(PE_SPRITE, remap ? 19 + 64 : 19);
 	PE_Ptr(spans);
 	PE_Ptr(cacheblock);
@@ -1306,12 +1330,18 @@ R_SendSprite(const espan_t *spans, float d_ziorigin, float d_zistepu, float d_zi
 	PE_Float(d_ziorigin);
 	PE_Float(d_zistepu);
 	PE_Float(d_zistepv);
-	PE_Word(r_polyblend | (r_polynodepth ? 4 : 0));
+	PE_Word(r_polyblend | (r_polynodepth ? 4 : 0) | (turb ? 8 : 0));
 	PE_Word(remap != NULL);
-	PE_Ptr(vid_additivemap);
+	if (turb)
+		PE_Ptr(turb);
+	else
+		PE_Ptr(vid_additivemap);
 
 	for (i = 0; remap && i < 256; i += 4)
 		PE_Word(remap[i] | (remap[i + 1] << 8) | (remap[i + 2] << 16) | ((unsigned)remap[i + 3] << 24));
+
+	if (r_polycache)
+		r_polycache->pe_fence = r_sprite_fence;
 }
 
 static void
