@@ -92,6 +92,11 @@ void ClearSkeleton(ModelSkeleton_t* skel, const int root)
 
 static void RotateModelSegment(const M_SkeletalJoint_t* joint, vec3_t* modelVerticies, const vec3_t angles, const M_SkeletalCluster_t* modelCluster)
 {
+	// MC1: with no joint angles the rotation below comes out as the identity (to within
+	// float rounding, 2.4e-7 measured), so leave the vertices alone. Most joints are idle.
+	if (angles[0] == 0.0f && angles[1] == 0.0f && angles[2] == 0.0f)
+		return;
+
 	matrix3_t toWorld;
 	matrix3_t partialBackToLocal;
 

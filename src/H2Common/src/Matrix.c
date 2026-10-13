@@ -97,15 +97,35 @@ H2COMMON_API void Matrix3MultByVec3(const matrix3_t a, const vec3_t b, vec3_t ou
 	out[2] = a[0][2] * c[0] + a[1][2] * c[1] + a[2][2] * c[2];
 }
 
+// The pitch, yaw and roll matrices of Create*Matrix() with one sinf and one cosf per angle
+// (MC1: the game builds these all the time). sinf is odd and cosf even, exactly, so the
+// matrices come out bit for bit as before.
+static void AngleMatrices(const float pitch, const float yaw, const float roll, matrix3_t m_pitch, matrix3_t m_yaw, matrix3_t m_roll)
+{
+	const float sp = sinf(pitch), cp = cosf(pitch);
+	const float sy = sinf(yaw), cy = cosf(yaw);
+	const float sr = sinf(roll), cr = cosf(roll);
+
+	m_pitch[0][0] = cp;  m_pitch[0][1] = 0.0f; m_pitch[0][2] = sp;
+	m_pitch[1][0] = 0.0f; m_pitch[1][1] = 1.0f; m_pitch[1][2] = 0.0f;
+	m_pitch[2][0] = -sp; m_pitch[2][1] = 0.0f; m_pitch[2][2] = cp;
+
+	m_yaw[0][0] = cy;  m_yaw[0][1] = sy;  m_yaw[0][2] = 0.0f;
+	m_yaw[1][0] = -sy; m_yaw[1][1] = cy;  m_yaw[1][2] = 0.0f;
+	m_yaw[2][0] = 0.0f; m_yaw[2][1] = 0.0f; m_yaw[2][2] = 1.0f;
+
+	m_roll[0][0] = 1.0f; m_roll[0][1] = 0.0f; m_roll[0][2] = 0.0f;
+	m_roll[1][0] = 0.0f; m_roll[1][1] = cr;  m_roll[1][2] = sr;
+	m_roll[2][0] = 0.0f; m_roll[2][1] = -sr; m_roll[2][2] = cr;
+}
+
 H2COMMON_API void Matrix3FromAngles(const vec3_t angles, matrix3_t rotation)
 {
 	matrix3_t m_pitch;
 	matrix3_t m_yaw;
 	matrix3_t m_roll;
 
-	CreatePitchMatrix(m_pitch, angles[PITCH]);
-	CreateYawMatrix(m_yaw, angles[YAW]);
-	CreateRollMatrix(m_roll, angles[ROLL]);
+	AngleMatrices(angles[PITCH], angles[YAW], angles[ROLL], m_pitch, m_yaw, m_roll);
 
 	matrix3_t m_tmp;
 	Matrix3MultByMatrix3(m_pitch, m_roll, m_tmp);
@@ -119,9 +139,7 @@ H2COMMON_API void IMatrix3FromAngles(const vec3_t angles, matrix3_t rotation)
 	matrix3_t m_yaw;
 	matrix3_t m_roll;
 
-	CreatePitchMatrix(m_pitch, -angles[PITCH]);
-	CreateYawMatrix(m_yaw, -angles[YAW]);
-	CreateRollMatrix(m_roll, -angles[ROLL]);
+	AngleMatrices(-angles[PITCH], -angles[YAW], -angles[ROLL], m_pitch, m_yaw, m_roll);
 
 	matrix3_t m_tmp;
 	Matrix3MultByMatrix3(m_pitch, m_yaw, m_tmp);
