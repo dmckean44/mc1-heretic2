@@ -39,6 +39,7 @@ enum {
 	PE_VIEW = 17,
 	PE_FACE = 18,
 	PE_FACETEX = 20,
+	PE_SPRITEPOLY = 21,
 	PE_SPRITE = 13
 };
 
@@ -150,6 +151,7 @@ PE_Finish(void)
 
 void PE_Init(void);
 void PE_BeginFrame(void);
+void PE_WorldView(void);
 void PE_DrawFaceTex(const surf_t *s, int flags, int mip, const float *tmo);
 /* solid faces go out as FACETEX: the engine computes their gradients (version 15) */
 #define PE_FACETEX_OK(fa)	(pe_face && pe_version >= 15 && \

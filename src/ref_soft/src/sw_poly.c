@@ -1077,12 +1077,27 @@ R_ClipAndDrawPoly ( float alpha, int isturbulent, qboolean textured )
 	r_polycache = NULL;
 }
 
+static void R_PolygonCalculateGradients (float *p_ziorigin, float *p_zistepu, float *p_zistepv);
+static void R_SendSpritePoly(const vec5_t *verts, int nump, float d_ziorigin, float d_zistepu, float d_zistepv);
+
 static void
 R_ClipAndDrawPolyCommon(int isturbulent)
 {
 	vec_t		*pv;
 	int		i, nump;
 	vec3_t		transformed, local;
+
+	if (r_polyengine && pe_face && pe_version >= 17)
+	{
+		/* the engine clips, projects and scans it (SPRITEPOLY) */
+		float	d_ziorigin, d_zistepu, d_zistepv;
+
+		cachewidth = r_polydesc.pixel_width;
+		cacheblock = r_polydesc.pixels;
+		R_PolygonCalculateGradients(&d_ziorigin, &d_zistepu, &d_zistepv);
+		R_SendSpritePoly((const vec5_t *)r_clip_verts[0], r_polydesc.nump, d_ziorigin, d_zistepu, d_zistepv);
+		return;
+	}
 
 	// clip to the frustum in worldspace
 	nump = r_polydesc.nump;
@@ -1339,6 +1354,61 @@ R_SendSprite(const espan_t *spans, float d_ziorigin, float d_zistepu, float d_zi
 
 	for (i = 0; remap && i < 256; i += 4)
 		PE_Word(remap[i] | (remap[i + 1] << 8) | (remap[i + 2] << 16) | ((unsigned)remap[i + 3] << 24));
+
+	if (r_polycache)
+		r_polycache->pe_fence = r_sprite_fence;
+}
+
+/* SPRITEPOLY (engine version 17): the polygon's world-space vertices instead of its spans; the
+   engine clips, projects and scans it with the world camera */
+static void
+R_SendSpritePoly(const vec5_t *verts, int nump, float d_ziorigin, float d_zistepu, float d_zistepv)
+{
+	const byte *remap = r_polyremap;
+	int i;
+
+	const int *turb = NULL;
+
+	if (r_polyturbulent & SURF_WARP)
+		turb = sintable + ((int)(r_newrefdef.time * SPEED) & (CYCLE - 1));
+	else if (r_polyturbulent)
+		turb = blanktable;
+
+	PE_WorldView();
+	r_sprite_fence = PE_Begin(PE_SPRITEPOLY, (remap ? 19 + 64 : 19) + 1 + 3 * nump);
+	PE_Word(0);
+	PE_Ptr(cacheblock);
+	PE_Word(cachewidth);
+	PE_Word(sadjust);
+	PE_Word(tadjust);
+	PE_Word(bbextents);
+	PE_Word(bbextentt);
+	PE_Float(d_sdivzorigin);
+	PE_Float(d_sdivzstepu);
+	PE_Float(d_sdivzstepv);
+	PE_Float(d_tdivzorigin);
+	PE_Float(d_tdivzstepu);
+	PE_Float(d_tdivzstepv);
+	PE_Float(d_ziorigin);
+	PE_Float(d_zistepu);
+	PE_Float(d_zistepv);
+	PE_Word(r_polyblend | (r_polynodepth ? 4 : 0) | (turb ? 8 : 0));
+	PE_Word(remap != NULL);
+	if (turb)
+		PE_Ptr(turb);
+	else
+		PE_Ptr(vid_additivemap);
+
+	for (i = 0; remap && i < 256; i += 4)
+		PE_Word(remap[i] | (remap[i + 1] << 8) | (remap[i + 2] << 16) | ((unsigned)remap[i + 3] << 24));
+
+	PE_Word(nump);
+	for (i = 0; i < nump; i++)
+	{
+		PE_Float(verts[i][0]);
+		PE_Float(verts[i][1]);
+		PE_Float(verts[i][2]);
+	}
 
 	if (r_polycache)
 		r_polycache->pe_fence = r_sprite_fence;

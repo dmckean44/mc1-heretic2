@@ -134,6 +134,17 @@ PE_CoverBegin(void)
 	PE_Word(shift_size);
 }
 
+/* the world camera again after brush models (for SPRITEPOLY) */
+void
+PE_WorldView(void)
+{
+	if (pe_view_entity)
+	{
+		PE_SendView(r_origin);
+		pe_view_entity = NULL;
+	}
+}
+
 /* the first 7 words of FACE and FACETEX: a whole face, which the engine clips and
    projects. Brush models come last, depth-tested, each with its own camera. */
 static void
