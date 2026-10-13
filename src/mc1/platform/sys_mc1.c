@@ -327,6 +327,7 @@ static void PrintProfileMark(const char* tag, const int frame)
 #endif
 }
 
+static uint32_t frame_clk[4096];
 static cvar_t* fixedtime;
 static cvar_t* prof_start;
 static cvar_t* prof_frames;
@@ -343,9 +344,16 @@ static void ProfileMarks(const int frame)
 	if (frame == start)
 		PrintProfileMark("PROF_START", frame);
 
+	if (frame >= start && frame <= start + count && frame - start < 4096)
+		frame_clk[frame - start] = (uint32_t)CycleCount();
+
 	if (frame == start + count)
 	{
 		PrintProfileMark("PROF_END", frame);
+		// per-frame cycles (TDFRAMES lines, as the other ports print them)
+		for (int i = 1; i <= count && i < 4096; i++)
+			Com_Printf("%s%u%s", i % 16 == 1 ? "TDFRAMES " : "", (unsigned)(frame_clk[i] - frame_clk[i - 1]),
+				i % 16 == 0 || i == count ? "\n" : " ");
 		Com_Quit();
 	}
 }

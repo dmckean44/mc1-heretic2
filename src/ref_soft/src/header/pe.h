@@ -49,7 +49,8 @@ enum {
 	PE_SPAN_TEX = 1,
 	PE_SPAN_Z = 2,
 	PE_SPAN_TURB = 4,
-	PE_SPAN_FLAT = 8
+	PE_SPAN_FLAT = 8,
+	PE_SPAN_NOCOVER = 64	/* depth-tested, not front to back (version 9) */
 };
 
 enum {
@@ -148,6 +149,7 @@ PE_Finish(void)
 
 void PE_Init(void);
 void PE_BeginFrame(void);
+void R_BmodelViewOrigin(const entity_t *e, vec3_t org);
 void PE_SetSkin(const pixel_t *pskin, int skinwidth);
 void PE_DrawSurf(const surf_t *s, int flags, const int *turb,
 	float d_ziorigin, float d_zistepu, float d_zistepv,
