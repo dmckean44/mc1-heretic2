@@ -19,6 +19,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 */
 
 #include "header/local.h"
+#include "header/pe.h"
 
 #define	MAX_RIMAGES	1024
 static image_t		*r_whitetexture_mip = NULL;
@@ -768,10 +769,22 @@ R_BuildAdditiveMap(void)
  * Remaps palette colors to a tint, like modulating a texture with a vertex color. Returns NULL
  * for white. Remaps are cached for the last few colors.
  */
+static byte tint_remaps[TINT_CACHE_SIZE][256];
+static unsigned tint_fences[TINT_CACHE_SIZE];	/* the last engine command that reads each */
+
+/* The engine reads remaps from memory (version 19): note the command that uses one, so the
+   cache waits for it before reusing the entry. */
+void
+R_TintRemapUsed(const byte *remap, unsigned fence)
+{
+	if (remap >= tint_remaps[0] && remap < tint_remaps[TINT_CACHE_SIZE])
+		tint_fences[(remap - tint_remaps[0]) / 256] = fence;
+}
+
 const byte *
 R_TintRemap(paletteRGBA_t color)
 {
-	static byte remaps[TINT_CACHE_SIZE][256];
+	byte (*remaps)[256] = tint_remaps;
 	static unsigned colors[TINT_CACHE_SIZE];
 	static int next;
 	const unsigned rgb = color.c | 0xff000000;
@@ -788,6 +801,7 @@ R_TintRemap(paletteRGBA_t color)
 	}
 
 	remap = remaps[next];
+	PE_WaitFor(tint_fences[next]);
 	colors[next] = rgb;
 	next = (next + 1) % TINT_CACHE_SIZE;
 

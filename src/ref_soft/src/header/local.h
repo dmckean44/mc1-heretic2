@@ -503,6 +503,7 @@ enum
 
 int R_EntityBlend(const entity_t *e, const byte **remap);
 const byte *R_TintRemap(paletteRGBA_t color);
+void R_TintRemapUsed(const byte *remap, unsigned fence);
 void R_ClipAndDrawPolyBlend(int blend, const byte *remap, qboolean nodepth);
 
 void R_RenderFace(entity_t *currententity, const model_t *currentmodel, msurface_t *fa, int clipflags, qboolean insubmodel);

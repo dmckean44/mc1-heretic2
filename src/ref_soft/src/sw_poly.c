@@ -1328,7 +1328,7 @@ R_SendSprite(const espan_t *spans, float d_ziorigin, float d_zistepu, float d_zi
 	else if (r_polyturbulent)
 		turb = blanktable;
 
-	r_sprite_fence = PE_Begin(PE_SPRITE, remap ? 19 + 64 : 19);
+	r_sprite_fence = PE_Begin(PE_SPRITE, remap ? (pe_version >= 19 ? 20 : 19 + 64) : 19);
 	PE_Ptr(spans);
 	PE_Ptr(cacheblock);
 	PE_Word(cachewidth);
@@ -1346,13 +1346,19 @@ R_SendSprite(const espan_t *spans, float d_ziorigin, float d_zistepu, float d_zi
 	PE_Float(d_zistepu);
 	PE_Float(d_zistepv);
 	PE_Word(r_polyblend | (r_polynodepth ? 4 : 0) | (turb ? 8 : 0));
-	PE_Word(remap != NULL);
+	PE_Word(remap ? (pe_version >= 19 ? 2 : 1) : 0);
 	if (turb)
 		PE_Ptr(turb);
 	else
 		PE_Ptr(vid_additivemap);
 
-	for (i = 0; remap && i < 256; i += 4)
+	if (remap && pe_version >= 19)
+	{
+		/* the engine reads the remap itself (version 19) */
+		PE_Ptr(remap);
+		R_TintRemapUsed(remap, r_sprite_fence);
+	}
+	for (i = 0; remap && pe_version < 19 && i < 256; i += 4)
 		PE_Word(remap[i] | (remap[i + 1] << 8) | (remap[i + 2] << 16) | ((unsigned)remap[i + 3] << 24));
 
 	if (r_polycache)
@@ -1375,7 +1381,7 @@ R_SendSpritePoly(const vec5_t *verts, int nump, float d_ziorigin, float d_zistep
 		turb = blanktable;
 
 	PE_WorldView();
-	r_sprite_fence = PE_Begin(PE_SPRITEPOLY, (remap ? 19 + 64 : 19) + 1 + 3 * nump);
+	r_sprite_fence = PE_Begin(PE_SPRITEPOLY, (remap ? 20 : 19) + 1 + 3 * nump);
 	PE_Word(0);
 	PE_Ptr(cacheblock);
 	PE_Word(cachewidth);
@@ -1393,13 +1399,19 @@ R_SendSpritePoly(const vec5_t *verts, int nump, float d_ziorigin, float d_zistep
 	PE_Float(d_zistepu);
 	PE_Float(d_zistepv);
 	PE_Word(r_polyblend | (r_polynodepth ? 4 : 0) | (turb ? 8 : 0));
-	PE_Word(remap != NULL);
+	PE_Word(remap ? (pe_version >= 19 ? 2 : 1) : 0);
 	if (turb)
 		PE_Ptr(turb);
 	else
 		PE_Ptr(vid_additivemap);
 
-	for (i = 0; remap && i < 256; i += 4)
+	if (remap && pe_version >= 19)
+	{
+		/* the engine reads the remap itself (version 19) */
+		PE_Ptr(remap);
+		R_TintRemapUsed(remap, r_sprite_fence);
+	}
+	for (i = 0; remap && pe_version < 19 && i < 256; i += 4)
 		PE_Word(remap[i] | (remap[i + 1] << 8) | (remap[i + 2] << 16) | ((unsigned)remap[i + 3] << 24));
 
 	PE_Word(nump);

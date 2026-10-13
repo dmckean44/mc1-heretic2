@@ -150,7 +150,8 @@ R_BlitImage(const image_t *image, int s, int t, int sw, int th, int x, int y, in
 	if (pe_active && pe_version >= 9)
 	{
 		/* the engine draws it (BLIT), after what it has queued */
-		PE_Begin(PE_BLIT, remap ? 12 + 64 : 12);
+		const qboolean remap_ptr = remap && pe_version >= 19;
+		const unsigned fence = PE_Begin(PE_BLIT, remap ? (remap_ptr ? 13 : 12 + 64) : 12);
 		PE_Ptr(image->pixels[0] + t * image->width + s);
 		PE_Word(image->width);
 		PE_Word(sstep);
@@ -161,9 +162,15 @@ R_BlitImage(const image_t *image, int s, int t, int sw, int th, int x, int y, in
 		PE_Word(vid_buffer_width);
 		PE_Word(w);
 		PE_Word(h);
-		PE_Word((alpha == ALPHA_33 ? 1 : alpha == ALPHA_66 ? 2 : 0) | (remap ? 4 : 0));
+		PE_Word((alpha == ALPHA_33 ? 1 : alpha == ALPHA_66 ? 2 : 0) | (remap_ptr ? 32 : remap ? 4 : 0));
 		PE_Ptr(vid_alphamap);
-		if (remap)
+		if (remap_ptr)
+		{
+			/* the engine reads the remap itself (version 19) */
+			PE_Ptr(remap);
+			R_TintRemapUsed(remap, fence);
+		}
+		else if (remap)
 		{
 			for (v = 0; v < 256; v += 4)
 				PE_Word(remap[v] | remap[v + 1] << 8 | remap[v + 2] << 16 | (unsigned)remap[v + 3] << 24);

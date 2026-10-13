@@ -116,11 +116,19 @@ PE_SetSkinBlend(const pixel_t *pskin, int skinwidth, int mode, const byte *table
 {
 	int i;
 
-	PE_Begin(PE_SKIN, remap ? 4 + 64 : 4);
+	const unsigned fence = PE_Begin(PE_SKIN, remap ? (pe_version >= 19 ? 5 : 4 + 64) : 4);
 	PE_Ptr(pskin);
 	PE_Word(skinwidth);
 	PE_Word(mode);
 	PE_Ptr(table);
+	if (remap && pe_version >= 19)
+	{
+		/* the engine copies the remap when it runs this SKIN (version 19) */
+		PE_Ptr(remap);
+		R_TintRemapUsed(remap, fence);
+		pe_skin = NULL;
+		return;
+	}
 	for (i = 0; remap && i < 256; i += 4)
 		PE_Word(remap[i] | (remap[i + 1] << 8) | (remap[i + 2] << 16) | ((unsigned)remap[i + 3] << 24));
 	pe_skin = NULL;
