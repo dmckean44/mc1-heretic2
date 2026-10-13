@@ -109,6 +109,23 @@ PE_BeginFrame(void)
 	}
 }
 
+/* a skin drawn blended (SKIN mode and table, version 8), with Heretic II's tint applied to the
+   lit texel first (version 18); always sent, and the plain skin is sent again after it */
+void
+PE_SetSkinBlend(const pixel_t *pskin, int skinwidth, int mode, const byte *table, const byte *remap)
+{
+	int i;
+
+	PE_Begin(PE_SKIN, remap ? 4 + 64 : 4);
+	PE_Ptr(pskin);
+	PE_Word(skinwidth);
+	PE_Word(mode);
+	PE_Ptr(table);
+	for (i = 0; remap && i < 256; i += 4)
+		PE_Word(remap[i] | (remap[i + 1] << 8) | (remap[i + 2] << 16) | ((unsigned)remap[i + 3] << 24));
+	pe_skin = NULL;
+}
+
 void
 PE_SetSkin(const pixel_t *pskin, int skinwidth)
 {

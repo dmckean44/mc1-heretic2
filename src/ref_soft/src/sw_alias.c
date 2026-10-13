@@ -1208,9 +1208,23 @@ R_AliasDrawModel(entity_t *currententity, const model_t *currentmodel)
 		break;
 	}
 
-	pe_alias = pe_active && d_pdrawspans == R_PolysetDrawSpans8_Opaque;
+	pe_alias = pe_active && (d_pdrawspans == R_PolysetDrawSpans8_Opaque || pe_version >= 18);
 	if (!pe_alias)
 		PE_Finish();
+	else if (d_pdrawspans != R_PolysetDrawSpans8_Opaque)
+	{
+		/* blended models on the engine too (version 18): 33% is alphamap[lit + dst * 256],
+		   66% alphamap[lit * 256 + dst], additive additivemap[remap[lit] * 256 + dst];
+		   none of them write Z */
+		if (blend == RB_ADD)
+			PE_SetSkinBlend(r_affinetridesc.pskin, r_affinetridesc.skinwidth,
+				PE_SKIN_BLEND_LIT | PE_SKIN_NOZ, vid_additivemap, remap);
+		else
+			PE_SetSkinBlend(r_affinetridesc.pskin, r_affinetridesc.skinwidth,
+				PE_SKIN_BLEND_LIT | PE_SKIN_NOZ | (blend == RB_33 ? PE_SKIN_SWAP : 0), vid_alphamap, NULL);
+	}
+	else
+		PE_SetSkin(r_affinetridesc.pskin, r_affinetridesc.skinwidth);
 
 	/*
 	** Skeleton joints (Corvus turning his head and torso) and the reference points that client

@@ -159,6 +159,11 @@ void PE_DrawFaceTex(const surf_t *s, int flags, int mip, const float *tmo);
 		!((fa)->texinfo->flags & SURF_FLOWING))
 void R_BmodelViewOrigin(const entity_t *e, vec3_t org);
 void PE_SetSkin(const pixel_t *pskin, int skinwidth);
+void PE_SetSkinBlend(const pixel_t *pskin, int skinwidth, int mode, const byte *table, const byte *remap);
+/* SKIN modes (version 8) */
+#define PE_SKIN_BLEND_LIT	2	/* table[lit * 256 + dst] */
+#define PE_SKIN_SWAP		8	/* table[dst * 256 + lit] instead */
+#define PE_SKIN_NOZ		16	/* no Z writes */
 void PE_DrawSurf(const surf_t *s, int flags, const int *turb,
 	float d_ziorigin, float d_zistepu, float d_zistepv,
 	float zorigin, float zstepu, float zstepv);
