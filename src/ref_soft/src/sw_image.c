@@ -763,7 +763,7 @@ R_BuildAdditiveMap(void)
 	}
 }
 
-#define TINT_CACHE_SIZE 16
+#define TINT_CACHE_SIZE 64	/* MC1: was 16, which missed half the time in combat */
 
 /*
  * Remaps palette colors to a tint, like modulating a texture with a vertex color. Returns NULL
@@ -805,12 +805,17 @@ R_TintRemap(paletteRGBA_t color)
 	colors[next] = rgb;
 	next = (next + 1) % TINT_CACHE_SIZE;
 
+	// x / 255 as (x + 1 + (x >> 8)) >> 8, exact for every product of two bytes
+	#define DIV255(x)	(((x) + 1 + ((x) >> 8)) >> 8)
 	for (i = 0; i < 256; i++)
 	{
-		remap[i] = R_ColorTo8bit(d_8to24table[i * 4 + 0] * color.r / 255,
-			d_8to24table[i * 4 + 1] * color.g / 255,
-			d_8to24table[i * 4 + 2] * color.b / 255);
+		const int r = d_8to24table[i * 4 + 0] * color.r;
+		const int g = d_8to24table[i * 4 + 1] * color.g;
+		const int b = d_8to24table[i * 4 + 2] * color.b;
+
+		remap[i] = R_ColorTo8bit(DIV255(r), DIV255(g), DIV255(b));
 	}
+	#undef DIV255
 	remap[TRANSPARENT_COLOR] = TRANSPARENT_COLOR;
 
 	return remap;
