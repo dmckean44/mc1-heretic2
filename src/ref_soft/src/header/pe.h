@@ -36,6 +36,8 @@ enum {
 	PE_MESH = 12,
 	PE_VERTS2 = 15,
 	PE_BLIT = 16,
+	PE_VIEW = 17,
+	PE_FACE = 18,
 	PE_SPRITE = 13
 };
 
@@ -71,6 +73,7 @@ extern unsigned pe_submitted;
 extern unsigned pe_synced;
 extern unsigned pe_spans_fence;
 extern qboolean pe_world;
+extern qboolean pe_face;	/* world faces go out whole, as FACE (version 10) */
 
 /* guard band: the engine clips models to the screen up to this many times its
    half width or height from the centre (version 9) */
