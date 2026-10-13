@@ -15,6 +15,9 @@ static viddef_t modes[] =
 	{ 400, 300 },
 	{ 512, 384 },
 	{ 640, 480 },
+	{ 288, 216 },	// smaller 4:3 modes, scaled up by the video output
+	{ 256, 192 },
+	{ 224, 168 },
 };
 
 static vid_frame_t frame;

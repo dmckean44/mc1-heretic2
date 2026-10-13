@@ -123,8 +123,6 @@ R_BlitImage(const image_t *image, int s, int t, int sw, int th, int x, int y, in
 	if (!image || w <= 0 || h <= 0 || sw <= 0 || th <= 0 || alpha == ALPHA_NONE)
 		return;
 
-	PE_Finish();
-
 	sstep = (sw << 16) / w;
 	tstep = (th << 16) / h;
 	sfrac0 = 0;
@@ -146,7 +144,34 @@ R_BlitImage(const image_t *image, int s, int t, int sw, int th, int x, int y, in
 		w = vid_buffer_width - x;
 	if (y + h > vid_buffer_height)
 		h = vid_buffer_height - y;
+	if (w <= 0 || h <= 0)
+		return;
 
+	if (pe_active && pe_version >= 9)
+	{
+		/* the engine draws it (BLIT), after what it has queued */
+		PE_Begin(PE_BLIT, remap ? 12 + 64 : 12);
+		PE_Ptr(image->pixels[0] + t * image->width + s);
+		PE_Word(image->width);
+		PE_Word(sstep);
+		PE_Word(tstep);
+		PE_Word(sfrac0);
+		PE_Word(tfrac);
+		PE_Ptr(vid_buffer + y * vid_buffer_width + x);
+		PE_Word(vid_buffer_width);
+		PE_Word(w);
+		PE_Word(h);
+		PE_Word((alpha == ALPHA_33 ? 1 : alpha == ALPHA_66 ? 2 : 0) | (remap ? 4 : 0));
+		PE_Ptr(vid_alphamap);
+		if (remap)
+		{
+			for (v = 0; v < 256; v += 4)
+				PE_Word(remap[v] | remap[v + 1] << 8 | remap[v + 2] << 16 | (unsigned)remap[v + 3] << 24);
+		}
+		return;
+	}
+
+	PE_Finish();
 	for (v = 0; v < h; v++, tfrac += tstep)
 	{
 		const byte *src = image->pixels[0] + (t + (tfrac >> 16)) * image->width + s;

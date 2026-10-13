@@ -34,6 +34,8 @@ enum {
 	PE_LITSURF = 10,
 	PE_DEFER = 11,
 	PE_MESH = 12,
+	PE_VERTS2 = 15,
+	PE_BLIT = 16,
 	PE_SPRITE = 13
 };
 
@@ -69,6 +71,10 @@ extern unsigned pe_submitted;
 extern unsigned pe_synced;
 extern unsigned pe_spans_fence;
 extern qboolean pe_world;
+
+/* guard band: the engine clips models to the screen up to this many times its
+   half width or height from the centre (version 9) */
+#define PE_GUARD	2.0f
 
 typedef struct
 {

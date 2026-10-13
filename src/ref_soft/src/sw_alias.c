@@ -405,6 +405,88 @@ R_AliasPreparePoints
 Transforms the vertices, then draws the triangles of each visible mesh node with its skin.
 ================
 */
+/*
+ * Blended vertices lie in the box from r_lerp_move to r_lerp_move + 255 *
+ * (backv + frontv). If its corners are in front of the z clip plane and inside
+ * the clip rectangle (the guard band, when the engine draws the model), no
+ * vertex gets a clip flag.
+ */
+static qboolean
+R_AliasLerpBoxUnclipped(void)
+{
+	int i, k;
+
+	for (i = 0; i < 8; i++)
+	{
+		vec3_t c;
+		float x, y, z, zi, u, v;
+
+		for (k = 0; k < 3; k++)
+			c[k] = r_lerp_move[k] + ((i >> k) & 1 ? 255.0F * (r_lerp_backv[k] + r_lerp_frontv[k]) : 0.0F);
+		x = DotProduct(c, aliastransform[0]) + aliastransform[0][3];
+		y = DotProduct(c, aliastransform[1]) + aliastransform[1][3];
+		z = DotProduct(c, aliastransform[2]) + aliastransform[2][3];
+		if (z < ALIAS_Z_CLIP_PLANE)
+			return false;
+		zi = 1.0F / z;
+		u = (x * aliasxscale * zi) + aliasxcenter;
+		v = (y * aliasyscale * zi) + aliasycenter;
+		if (u < r_refdef.aliasvrect.x || v < r_refdef.aliasvrect.y ||
+			u > r_refdef.aliasvrectright || v > r_refdef.aliasvrectbottom)
+			return false;
+	}
+	return true;
+}
+
+/* the CPU draws translucent nodes, and needs the vertices for that */
+static qboolean
+R_AliasNodesOpaque(const entity_t *currententity)
+{
+	const fmnodeinfo_t *nodeinfo = currententity->fmnodeinfo;
+	int n;
+
+	for (n = 0; nodeinfo && n < s_pmdl->num_nodes && n < s_pmdl->header.num_mesh_nodes; n++)
+	{
+		if (!(nodeinfo[n].flags & FMNI_NO_DRAW) && (nodeinfo[n].flags & FMNI_USE_COLOR) &&
+			nodeinfo[n].color.a < 255)
+			return false;
+	}
+	return true;
+}
+
+/* the engine blends, transforms, lights and projects the vertices (version 9) */
+static void
+PE_AliasVerts2(finalvert_t *verts)
+{
+	int i, j;
+
+	PE_Begin(PE_VERTS2, 36);
+	PE_Ptr(r_lastframe->verts);
+	PE_Ptr(r_thisframe->verts);
+	PE_Word(s_pmdl->header.num_xyz);
+	PE_Ptr(verts);
+	for (i = 0; i < 3; i++)
+		for (j = 0; j < 4; j++)
+			PE_Float(aliastransform[i][j]);
+	for (i = 0; i < 3; i++)
+		PE_Float(r_lerp_move[i]);
+	for (i = 0; i < 3; i++)
+		PE_Float(r_lerp_backv[i]);
+	for (i = 0; i < 3; i++)
+		PE_Float(r_lerp_frontv[i]);
+	PE_Float(aliasxscale);
+	PE_Float(aliasyscale);
+	PE_Float(aliasxcenter);
+	PE_Float(aliasycenter);
+	PE_Float(s_ziscale);
+	PE_Ptr(r_avertexnormals);
+	PE_Float(r_plightvec[0]);
+	PE_Float(r_plightvec[1]);
+	PE_Float(r_plightvec[2]);
+	PE_Word(r_ambientlight[0]);
+	PE_Float(r_shadelight[0]);
+}
+
 static void
 R_AliasPreparePoints (entity_t *currententity, const model_t *currentmodel, finalvert_t *verts,
 	const finalvert_t *verts_max, qboolean lerped)
@@ -413,6 +495,7 @@ R_AliasPreparePoints (entity_t *currententity, const model_t *currentmodel, fina
 	const image_t *skin = R_AliasSkin(currententity, currentmodel);
 	void (*drawspans)(const entity_t *, spanpackage_t *) = d_pdrawspans;
 	const qboolean model_pe = pe_alias;
+	qboolean engine_verts = false;
 	int clip_flags = 0;
 	int n;
 
@@ -422,7 +505,13 @@ R_AliasPreparePoints (entity_t *currententity, const model_t *currentmodel, fina
 		return;
 	}
 
-	if (lerped)
+	if (!lerped && pe_alias && pe_world && pe_version >= 9 && verts != finalverts &&
+		R_AliasNodesOpaque(currententity) && R_AliasLerpBoxUnclipped())
+	{
+		PE_AliasVerts2(verts);	// no clip flags, and the CPU never reads them
+		engine_verts = true;
+	}
+	else if (lerped)
 	{
 		R_AliasTransformLerpedVerts(s_pmdl->header.num_xyz, verts, (const vec3_t *)s_lerped, r_thisframe->verts);
 	}
@@ -438,7 +527,7 @@ R_AliasPreparePoints (entity_t *currententity, const model_t *currentmodel, fina
 		R_AliasTransformFinalVerts(s_pmdl->header.num_xyz, verts, r_lastframe->verts, r_thisframe->verts);
 	}
 
-	if (pe_alias && pe_version >= 5)
+	if (pe_alias && pe_version >= 5 && !engine_verts)
 	{
 		for (n = 0; n < s_pmdl->header.num_xyz; n++)
 			clip_flags |= verts[n].flags;
@@ -1143,8 +1232,28 @@ R_AliasDrawModel(entity_t *currententity, const model_t *currentmodel)
 	else
 		s_ziscale = (float)0x8000 * (float)SHIFT16XYZ_MULT;
 
-	R_AliasPreparePoints(currententity, currentmodel, R_AliasVertexBuffer(s_pmdl->header.num_xyz),
-		finalverts_max, lerped);
+	{
+		const vrect_t save_vrect = r_refdef.aliasvrect;
+		const int save_right = r_refdef.aliasvrectright, save_bottom = r_refdef.aliasvrectbottom;
+
+		/* with the engine's scissor (version 9) only what leaves the guard band is clipped */
+		if (pe_alias && pe_world && pe_version >= 9)
+		{
+			const float cx = aliasxcenter, cy = aliasycenter;
+
+			r_refdef.aliasvrect.x = cx - PE_GUARD * (cx - save_vrect.x);
+			r_refdef.aliasvrect.y = cy - PE_GUARD * (cy - save_vrect.y);
+			r_refdef.aliasvrectright = cx + PE_GUARD * (save_right - cx);
+			r_refdef.aliasvrectbottom = cy + PE_GUARD * (save_bottom - cy);
+		}
+
+		R_AliasPreparePoints(currententity, currentmodel, R_AliasVertexBuffer(s_pmdl->header.num_xyz),
+			finalverts_max, lerped);
+
+		r_refdef.aliasvrect = save_vrect;
+		r_refdef.aliasvrectright = save_right;
+		r_refdef.aliasvrectbottom = save_bottom;
+	}
 
 	r_polyset_remap = NULL;
 }
